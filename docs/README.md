@@ -52,10 +52,11 @@ mindmap
 ---
 
 ### 📘 3. 운영 및 사용자 매뉴얼 (Manuals & Guides)
-서버 배포, 윈도우 스케줄러 자동화, 모바일 텔레그램 원격 제어 가이드입니다.
+서버 배포, 윈도우 스케줄러 자동화, 모바일 텔레그램 원격 제어 및 인프라 동기화 가이드입니다.
 
 * [**deployment.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/3_manual/deployment.md): Cafe24 VPS/Vercel 배포, Task Scheduler 자동화 등록, 로그 로테이션 및 장애 복구 가이드
-* [**telegram_bot_guide.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/3_manual/telegram_bot_guide.md): 텔레그램 봇 토큰 설정, 명령어(`/system`, `/screener`, `/cmd`) 및 원격 인라인 승인 가이드
+* [**telegram_bot_guide.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/3_manual/telegram_bot_guide.md): 텔레그램 봇 설정, 명령어(`/system`, `/screener`, `/cmd`) 및 원격 인라인 승인 가이드
+* [**PROJECT_RENAME_SYNC_GUIDE.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/3_manual/PROJECT_RENAME_SYNC_GUIDE.md): [필독] 프로젝트명 변경 시 GitHub, Vercel, Google OAuth, VPS 풀스택 동기화 매뉴얼
 
 ---
 
