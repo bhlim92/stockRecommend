@@ -237,3 +237,21 @@ flowchart TD
 - [ ] **Inspect Application Log**: Check `logs/app.log` for any `WARNING` or `ERROR` items. Specifically search for "YouTube transcript failed" or "Ticker fetch failed".
 - [ ] **Confirm File Upload**: Open Google Drive and verify a new report exists under the `Stock_Reports` folder with today's date stamp.
 - [ ] **Verify Report Quality**: Open the report to confirm the Gemini LLM generated recommendations (e.g., sections are not blank, CANSLIM tables are populated).
+
+---
+
+## 6. Vercel Web Dashboard CLI Automation (No-UI Deployment)
+
+When updating the frontend or configuring domains, you can use the **Vercel CLI** to execute deployments and manage domains directly from the terminal without opening the Vercel web console:
+
+```bash
+# 1. Direct Production Deployment (bypasses GitHub webhook delay)
+npx vercel --prod --yes
+
+# 2. Add / Link Custom Domain directly
+npx vercel domains add stockrecommend.vercel.app
+
+# 3. Automated Deployment with Personal Access Token
+npx vercel --prod --yes --token <VERCEL_TOKEN>
+```
+

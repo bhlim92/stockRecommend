@@ -47,20 +47,29 @@ flowchart TD
 
 ---
 
-### STEP 3. Vercel 프론트엔드 호스팅 & 웹훅 동기화 ⚠️ (가장 주의할 곳!)
+### STEP 3. Vercel 프론트엔드 호스팅 & CLI 자동 배포 (No-Dashboard) 💻
 
-GitHub 이름이 바뀌면 **GitHub &rarr; Vercel로 가는 자동 빌드 웹훅이 일시 단절**됩니다.
+웹 대시보드 접속 없이 **Vercel CLI 명령어**로 즉시 배포 및 도메인 바인딩이 가능합니다.
 
-1. **Vercel Git 연결 갱신 (필수)**:
-   - Vercel 대시보드 &rarr; **Settings** &rarr; **Git** 이동
-   - **Connected Git Repository**에서 끊어져 있거나 옛날 이름으로 되어 있다면 **Disconnect** 후 다시 **Connect GitHub** 클릭
-   - 검색창에서 바뀐 이름(`bhlim92/stockRecommend`)을 선택하여 재연결합니다.
-2. **Vercel 도메인 등록**:
-   - **Settings** &rarr; **Domains** 이동
-   - 새 도메인(`stockrecommend.vercel.app`) 입력 후 **Add** 클릭
+#### 🥇 방법 A: Vercel CLI 원클릭 배포 (가장 빠름 - 웹 접속 불필요)
+```bash
+# 1. 로컬 코드를 프로덕션으로 즉시 직통 배포 (10초 소요)
+npx vercel --prod --yes
+
+# 2. 도메인을 CLI에서 즉시 프로젝트에 연결
+npx vercel domains add stockrecommend.vercel.app
+
+# 3. (옵션) VERCEL_TOKEN을 사용하는 무인 자동 배포
+npx vercel --prod --yes --token <VERCEL_TOKEN>
+```
+
+#### 🥈 방법 B: GitHub Webhook 연동 방식
+1. **Vercel Git 연결 갱신**:
+   - Vercel 대시보드 &rarr; **Settings** &rarr; **Git** 이동 &rarr; **`bhlim92/stockRecommend`** 재연결
+2. **도메인 연결**:
+   - **Settings** &rarr; **Domains** 이동 &rarr; `stockrecommend.vercel.app` 추가
 3. **⚠️ 주의: `Redeploy` 버튼의 함정**:
-   - Vercel 목록에서 과거 배포본의 **`Redeploy` 버튼은 GitHub의 최신 코드를 가져오는 것이 아니라 "해당 상자에 묶인 과거 커밋"을 다시 빌드**합니다.
-   - 최신 코드를 반영하려면 **로컬에서 새 커밋을 만들어 `git push`** 하거나, Deployments 화면 우측 상단의 **`Create Deployment`** 버튼을 눌러 `main` 브랜치를 직접 배포해야 합니다.
+   - 과거 배포 상자의 `Redeploy` 버튼은 최신 코드가 아닌 "해당 상자의 과거 커밋"을 재빌드합니다. 최신 반영을 위해서는 반드시 **새 커밋 푸시** 또는 **CLI 배포(`npx vercel --prod`)**를 사용해야 합니다.
 
 ---
 
