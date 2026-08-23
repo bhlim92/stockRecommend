@@ -7,7 +7,7 @@ An automated, daily investment recommendation system that crawls financial data 
 ## 1. Project Directory Structure
 
 ```text
-stockRecommnad/
+stockRecommend/
 ├── app/
 │   ├── __init__.py
 │   ├── config.py              # Application settings, watchlists, and YouTube cached IDs
@@ -35,7 +35,12 @@ stockRecommnad/
 ├── portfolio.json             # Current holdings database (JSON format)
 ├── requirements.txt           # Python packages required
 ├── run_pipeline.bat           # Daily automation script for Task Scheduler
-├── deployment.md              # In-depth Deployment & Maintenance Plan
+├── docs/                      # Unified Documentation Center (Sitemap & Guides)
+│   ├── README.md              # Documentation Hub Master Index
+│   ├── 1_architecture/        # System Architecture, AI Roles & Features
+│   ├── 2_design/              # UI/UX, CANSLIM Scoring & Screener Specs
+│   ├── 3_manual/              # Deployment, Maintenance & Telegram Bot Guides
+│   └── 4_reports/             # QA Audits, Migration & Bug Fix Reports
 ├── main.py                    # Application CLI Entrypoint orchestrator
 └── README.md                  # This file
 ```
@@ -65,7 +70,7 @@ stockRecommnad/
    ```
 
 ### Step 2: Initialize Portfolio Database
-Configure your initial holdings, base currency, and target asset allocation weights in [portfolio.json](file:///c:/Users/samsung/proj/stockRecommnad/portfolio.json):
+Configure your initial holdings, base currency, and target asset allocation weights in [portfolio.json](file:///c:/Users/samsung/proj/stockRecommend/portfolio.json):
 ```json
 {
   "cash": 10000000.0,
@@ -127,12 +132,12 @@ You can automate execution to run every day at e.g., 6:00 AM using `run_pipeline
 2. Click **Create Basic Task** and set:
    * **Trigger**: *Daily* (e.g. 6:00 AM).
    * **Action**: *Start a program*.
-   * **Program/script**: `c:\Users\samsung\proj\stockRecommnad\run_pipeline.bat`
-   * **Start in**: `c:\Users\samsung\proj\stockRecommnad` (Required!)
+   * **Program/script**: `c:\Users\samsung\proj\stockRecommend\run_pipeline.bat`
+   * **Start in**: `c:\Users\samsung\proj\stockRecommend` (Required!)
 3. Under task properties, select **Run whether user is logged on or not** and check **Run with highest privileges**.
 4. Execution logs will accumulate under `logs/scheduler.log` and rotating program traces under `logs/app.log`.
 
-For detailed troubleshooting procedures, logging parameters, and recovery steps when third-party APIs change, see the [deployment.md](file:///c:/Users/samsung/proj/stockRecommnad/deployment.md) guide.
+For detailed troubleshooting procedures, logging parameters, and recovery steps when third-party APIs change, see the [deployment.md](file:///c:/Users/samsung/proj/stockRecommend/docs/3_manual/deployment.md) guide.
 
 ---
 

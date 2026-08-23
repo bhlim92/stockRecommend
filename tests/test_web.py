@@ -72,6 +72,7 @@ def test_api_update_portfolio_success(mock_portfolio_json):
             "target_allocation": {
                 "stock": 0.4,
                 "bond": 0.3,
+                "gold": 0.0,
                 "commodity": 0.2,
                 "cash": 0.1
             }
@@ -95,6 +96,7 @@ def test_api_update_portfolio_invalid_weight(mock_portfolio_json):
             "target_allocation": {
                 "stock": 0.8,
                 "bond": 0.8, # total 1.6
+                "gold": 0.0,
                 "commodity": 0.0,
                 "cash": 0.0
             }
@@ -146,7 +148,7 @@ def test_api_get_rebalance_strategy_success():
 @patch("app.web_server._get_latest_recommendation_report")
 @patch("app.scoring.QuantScorer")
 @patch("google.generativeai.GenerativeModel")
-def test_api_generate_rebalance_strategy_success(mock_model_class, mock_quant_scorer_class, mock_get_report, mock_fetch_holdings):
+def test_api_generate_rebalance_strategy_success(mock_model_class, mock_quant_scorer_class, mock_get_report, mock_fetch_holdings, mock_portfolio_json):
     mock_fetch_holdings.return_value = [
         {"ticker": "005930.KS", "name": "Samsung", "quantity": 10.0, "current_price": 70000.0, "purchase_price": 68000.0, "total_purchase": 680000.0, "total_evaluation": 700000.0, "profit": 20000.0, "roi": "2.94%", "weight": "100.0%"}
     ]
@@ -171,10 +173,16 @@ def test_api_generate_rebalance_strategy_success(mock_model_class, mock_quant_sc
     mock_model = MagicMock()
     mock_model.generate_content.return_value = MagicMock(text="AI Rebalance Strategy Content")
     mock_model_class.return_value = mock_model
-    
-    with patch("builtins.open", MagicMock()), \
+    original_open = open
+    def mock_open_fn(file, *args, **kwargs):
+        if "portfolio.json" in str(file):
+            return original_open(file, *args, **kwargs)
+        return MagicMock()
+
+    with patch("builtins.open", side_effect=mock_open_fn), \
          patch("app.web_server.os.makedirs"), \
-         patch("app.web_server.os.path.exists", return_value=False):
+         patch("app.web_server.os.path.exists", side_effect=lambda p: "portfolio.json" in str(p)), \
+         patch("app.web_server.AppConfig.PORTFOLIO_FILE_PATH", mock_portfolio_json):
         
         payload = {"api_key": "fake_key", "model": "gemini-2.5-flash"}
         response = client.post("/api/portfolio/rebalance", json=payload)

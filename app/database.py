@@ -24,6 +24,13 @@ class ScreenerResult(Base):
     eval_score = Column(Integer, nullable=True)
     total_score = Column(Integer, nullable=True)
     rationale = Column(Text, nullable=True)
+    sector = Column(String(100), nullable=True)
+    analyst_rating = Column(String(20), nullable=True)      # 한국어 라벨 (예: 강력매수)
+    analyst_rating_raw = Column(String(30), nullable=True)  # yfinance raw key (예: strong_buy)
+    analyst_count = Column(Integer, nullable=True)           # 애널리스트 수
+    trend_pct = Column(Float, nullable=True)                 # 20일 등락률(%)
+    sparkline_prices = Column(Text, nullable=True)           # JSON 배열 문자열
+    sparkline_volumes = Column(Text, nullable=True)          # JSON 배열 문자열
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 # Database Engine initialization
@@ -83,6 +90,13 @@ def init_db():
             
         Base.metadata.create_all(bind=engine)
         SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        
+        # ─── 자동 컬럼 마이그레이션 ───────────────────────────────────────
+        # create_all은 기존 테이블에 새 컬럼을 추가하지 않으므로
+        # 누락된 컬럼을 감지해 ALTER TABLE로 자동 추가합니다.
+        _migrate_add_missing_columns(engine)
+        # ──────────────────────────────────────────────────────────────────
+        
         logger.info("Database successfully connected and tables verified.")
         return True
     except Exception as e:
@@ -90,6 +104,45 @@ def init_db():
         engine = None
         SessionLocal = None
         return False
+
+
+def _migrate_add_missing_columns(eng):
+    """screener_results 테이블에 신규 컬럼이 없으면 ALTER TABLE로 추가합니다."""
+    # 추가해야 할 컬럼: (name, ddl_fragment)
+    new_columns = [
+        ("sector",              "VARCHAR(100)"),
+        ("analyst_rating",      "VARCHAR(20)"),
+        ("analyst_rating_raw",  "VARCHAR(30)"),
+        ("analyst_count",       "INT"),
+        ("trend_pct",           "FLOAT"),
+        ("sparkline_prices",    "TEXT"),
+        ("sparkline_volumes",   "TEXT"),
+    ]
+    try:
+        with eng.connect() as conn:
+            # 현재 컬럼 목록 조회 (DB 종류에 관계없이 동작)
+            result = conn.execute(
+                __import__("sqlalchemy").text("SELECT * FROM screener_results LIMIT 0")
+            )
+            existing_cols = {col.lower() for col in result.keys()}
+            
+            for col_name, col_type in new_columns:
+                if col_name.lower() not in existing_cols:
+                    try:
+                        conn.execute(__import__("sqlalchemy").text(
+                            f"ALTER TABLE screener_results ADD COLUMN {col_name} {col_type}"
+                        ))
+                        # SQLite는 autocommit, MariaDB는 명시적 commit 필요
+                        try:
+                            conn.commit()
+                        except Exception:
+                            pass
+                        logger.info(f"Migration: added column '{col_name}' to screener_results.")
+                    except Exception as col_err:
+                        # 이미 존재하거나 지원하지 않는 경우 무시
+                        logger.debug(f"Migration skip '{col_name}': {col_err}")
+    except Exception as e:
+        logger.warning(f"Migration check failed (non-critical): {e}")
 
 # Trigger initialization on module import
 init_db()
@@ -119,9 +172,23 @@ def save_screener_results(market: str, results: List[Dict[str, Any]]) -> bool:
         if not scan_time:
             scan_time = datetime.utcnow()
         
+        import json
         for item in results:
             # Only save items that have been actually analyzed (score not None)
             if item.get("total_score") is not None:
+                # sparkline 데이터를 JSON 문자열로 직렬화
+                sp = item.get("sparkline_prices")
+                sv = item.get("sparkline_volumes")
+                sp_json = json.dumps(sp) if isinstance(sp, list) else None
+                sv_json = json.dumps(sv) if isinstance(sv, list) else None
+
+                # trend_pct 계산 (없으면 sparkline에서 계산)
+                tpct = item.get("trend_pct")
+                if tpct is None and isinstance(sp, list) and len(sp) >= 2:
+                    valid = [p for p in sp if p is not None]
+                    if len(valid) >= 2:
+                        tpct = (valid[-1] - valid[0]) / valid[0] * 100
+
                 record = ScreenerResult(
                     market=market,
                     symbol=item["symbol"],
@@ -131,6 +198,13 @@ def save_screener_results(market: str, results: List[Dict[str, Any]]) -> bool:
                     eval_score=item.get("eval_score"),
                     total_score=item.get("total_score"),
                     rationale=item.get("rationale"),
+                    sector=item.get("sector"),
+                    analyst_rating=item.get("analyst_rating"),
+                    analyst_rating_raw=item.get("analyst_rating_raw"),
+                    analyst_count=item.get("analyst_count"),
+                    trend_pct=tpct,
+                    sparkline_prices=sp_json,
+                    sparkline_volumes=sv_json,
                     created_at=scan_time
                 )
                 db_records.append(record)
@@ -175,6 +249,7 @@ def get_top_screener_results(limit: int = 10, market: str = None) -> List[Dict[s
             
         results = res_query.order_by(ScreenerResult.total_score.desc()).limit(limit).all()
         
+        import json
         dict_results = []
         for r in results:
             dict_results.append({
@@ -186,6 +261,13 @@ def get_top_screener_results(limit: int = 10, market: str = None) -> List[Dict[s
                 "eval_score": r.eval_score,
                 "total_score": r.total_score,
                 "rationale": r.rationale,
+                "sector": r.sector,
+                "analyst_rating": r.analyst_rating,
+                "analyst_rating_raw": r.analyst_rating_raw,
+                "analyst_count": r.analyst_count,
+                "trend_pct": r.trend_pct,
+                "sparkline_prices": json.loads(r.sparkline_prices) if r.sparkline_prices else None,
+                "sparkline_volumes": json.loads(r.sparkline_volumes) if r.sparkline_volumes else None,
                 "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else ""
             })
         db.close()
@@ -218,6 +300,7 @@ def get_latest_score_by_symbol(symbol: str) -> Optional[Dict[str, Any]]:
             db.close()
             return None
             
+        import json
         res = {
             "market": record.market,
             "symbol": record.symbol,
@@ -227,6 +310,13 @@ def get_latest_score_by_symbol(symbol: str) -> Optional[Dict[str, Any]]:
             "eval_score": record.eval_score,
             "total_score": record.total_score,
             "rationale": record.rationale,
+            "sector": record.sector,
+            "analyst_rating": record.analyst_rating,
+            "analyst_rating_raw": record.analyst_rating_raw,
+            "analyst_count": record.analyst_count,
+            "trend_pct": record.trend_pct,
+            "sparkline_prices": json.loads(record.sparkline_prices) if record.sparkline_prices else None,
+            "sparkline_volumes": json.loads(record.sparkline_volumes) if record.sparkline_volumes else None,
             "created_at": record.created_at.strftime("%Y-%m-%d %H:%M:%S") if record.created_at else ""
         }
         db.close()

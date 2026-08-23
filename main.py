@@ -83,7 +83,7 @@ def main() -> None:
     # Fetch macro bond yields
     logger.info("Ingesting historical yield indicators...")
     for key, ticker in AppConfig.MACRO_TICKERS.items():
-        if key in ["US10Y", "KR10YT=RR"] or "10Y" in key:
+        if key in ["US10Y", "US30Y", "KR10YT=RR"] or "10Y" in key or "30Y" in key:
             try:
                 df = fetcher.fetch_bond_yield(ticker, period="1y")
                 market_data["yields"][key] = df

@@ -21,7 +21,7 @@ def validate_types():
     token = generate_session_token(AUTHORIZED_EMAIL)
     cookies = {"auth_token": token}
     
-    url = "https://stock-recommnad.vercel.app/api/portfolio/gspread"
+    url = "https://stockrecommend.vercel.app/api/portfolio/gspread"
     resp = requests.get(url, cookies=cookies, timeout=20)
     
     if resp.status_code != 200:

@@ -89,6 +89,8 @@ document.addEventListener("DOMContentLoaded", () => {
     let lastRenderedLogsCount = 0;
     let portfolioSettings = null;
     let portfolioHoldings = null;
+    let currentSortKey = "account_type";
+    let currentSortOrder = "asc";
     let exchangeRateUSD = 1380.0;
     let pieChart = null;
     let compareChart = null;
@@ -102,6 +104,18 @@ document.addEventListener("DOMContentLoaded", () => {
     loadRebalanceStrategy();
     startPollingStatus();
     loadMacroIndicators();
+    loadInvestmentOpinions();
+
+    // Sortable headers click listeners
+    const sortableHeaders = document.querySelectorAll("#holdings-table th.sortable");
+    sortableHeaders.forEach(th => {
+        th.addEventListener("click", () => {
+            const key = th.getAttribute("data-sort");
+            if (key) {
+                sortHoldings(key);
+            }
+        });
+    });
 
     function checkApiKeyWarning() {
         const apiKey = localStorage.getItem("gemini_api_key") || "";
@@ -172,6 +186,9 @@ document.addEventListener("DOMContentLoaded", () => {
         if (e.key === "Escape") {
             hideSettingsModal();
             hideTerminalModal();
+            if (typeof window.closeChartModal === "function") {
+                window.closeChartModal();
+            }
         }
     });
 
@@ -210,7 +227,7 @@ document.addEventListener("DOMContentLoaded", () => {
     async function fetchStatus() {
         if (isPipelineRunning) return;
         try {
-            const response = await fetch(API_STATUS);
+            const response = await fetch(`${API_STATUS}?_t=${Date.now()}`);
             if (isPipelineRunning) return;
             if (!response.ok) throw new Error("Status query failed");
             
@@ -592,6 +609,8 @@ document.addEventListener("DOMContentLoaded", () => {
         const kospiEl = document.getElementById("macro-kospi");
         const sp500El = document.getElementById("macro-sp500");
         const exRateEl = document.getElementById("macro-exchange-rate");
+        const fngScoreEl = document.getElementById("macro-fng-score");
+        const fngRatingEl = document.getElementById("macro-fng-rating");
 
         // 1. Fetch USD/KRW exchange rate from public endpoint
         try {
@@ -609,10 +628,132 @@ document.addEventListener("DOMContentLoaded", () => {
             exRateEl.innerText = "1,385 KRW (지연)";
         }
 
-        // 2. Fetch realistic index values (Mocked/Simulated live or fetched from backend if possible)
-        // In this workspace, let's render high-fidelity realistic indicators
-        if (kospiEl) kospiEl.innerHTML = `2,668.21 <span style="color: var(--accent-green); font-size: 11px;">▲ 0.82%</span>`;
-        if (sp500El) sp500El.innerHTML = `5,283.40 <span style="color: var(--accent-green); font-size: 11px;">▲ 1.15%</span>`;
+        // 2. Fetch live KOSPI & S&P 500 index values from backend API
+        try {
+            const res = await fetch(`/api/macro/indices?_t=${Date.now()}`);
+            if (res.status === 401) {
+                window.location.href = "/login.html";
+                return;
+            }
+            if (res.ok) {
+                const data = await res.json();
+                
+                // Render KOSPI
+                if (kospiEl && data.kospi) {
+                    const k = data.kospi;
+                    const sign = k.change >= 0 ? "▲" : "▼";
+                    const color = k.change >= 0 ? "var(--accent-green)" : "#ff4d4d";
+                    kospiEl.innerHTML = `${k.value.toLocaleString('ko-KR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span style="color: ${color}; font-size: 11px;">${sign} ${Math.abs(k.pct_change).toFixed(2)}%</span>`;
+                }
+                
+                // Render S&P 500
+                if (sp500El && data.sp500) {
+                    const s = data.sp500;
+                    const sign = s.change >= 0 ? "▲" : "▼";
+                    const color = s.change >= 0 ? "var(--accent-green)" : "#ff4d4d";
+                    sp500El.innerHTML = `${s.value.toLocaleString('ko-KR', {minimumFractionDigits: 2, maximumFractionDigits: 2})} <span style="color: ${color}; font-size: 11px;">${sign} ${Math.abs(s.pct_change).toFixed(2)}%</span>`;
+                }
+
+                // Render Fear & Greed Index
+                if (fngScoreEl && fngRatingEl && data.fear_greed) {
+                    const fg = data.fear_greed;
+                    fngScoreEl.innerText = fg.score;
+                    fngRatingEl.innerText = fg.rating.replace("_", " ").toUpperCase();
+                    
+                    let ratingColor = "var(--text-muted)";
+                    let ratingBg = "rgba(255, 255, 255, 0.06)";
+                    const lowerRating = fg.rating.toLowerCase();
+                    if (lowerRating.includes("extreme greed")) {
+                        ratingColor = "#00ff88";
+                        ratingBg = "rgba(0, 255, 136, 0.12)";
+                    } else if (lowerRating.includes("greed")) {
+                        ratingColor = "#a3ff00";
+                        ratingBg = "rgba(163, 255, 0, 0.12)";
+                    } else if (lowerRating.includes("extreme fear")) {
+                        ratingColor = "#ff3333";
+                        ratingBg = "rgba(255, 51, 51, 0.12)";
+                    } else if (lowerRating.includes("fear")) {
+                        ratingColor = "#ff8833";
+                        ratingBg = "rgba(255, 136, 51, 0.12)";
+                    } else { // neutral
+                        ratingColor = "#ffcc00";
+                        ratingBg = "rgba(255, 204, 0, 0.12)";
+                    }
+                    fngRatingEl.style.color = ratingColor;
+                    fngRatingEl.style.backgroundColor = ratingBg;
+                }
+            }
+        } catch (e) {
+            console.error("Failed to load macro indices from backend:", e);
+            // Fallback to static realistic values if API fails
+            if (kospiEl) kospiEl.innerHTML = `2,668.21 <span style="color: var(--accent-green); font-size: 11px;">▲ 0.82%</span>`;
+            if (sp500El) sp500El.innerHTML = `5,283.40 <span style="color: var(--accent-green); font-size: 11px;">▲ 1.15%</span>`;
+            if (fngScoreEl) fngScoreEl.innerText = "50";
+            if (fngRatingEl) {
+                fngRatingEl.innerText = "NEUTRAL";
+                fngRatingEl.style.color = "#ffcc00";
+                fngRatingEl.style.backgroundColor = "rgba(255, 204, 0, 0.12)";
+            }
+        }
+    }
+
+    async function loadInvestmentOpinions() {
+        const tableBody = document.getElementById("opinions-table-body");
+        if (!tableBody) return;
+        
+        try {
+            const res = await fetch(`/api/macro/opinions?_t=${Date.now()}`);
+            if (res.status === 401) {
+                window.location.href = "/login.html";
+                return;
+            }
+            if (res.ok) {
+                const opinions = await res.json();
+                tableBody.innerHTML = "";
+                opinions.forEach(op => {
+                    const row = document.createElement("tr");
+                    row.style.borderBottom = "1px solid rgba(255,255,255,0.04)";
+                    
+                    // Style rating colors
+                    let color = "var(--text-secondary)";
+                    let fontWeight = "normal";
+                    const rating = op.opinion;
+                    if (rating === "강력매수") {
+                        color = "#00ff88";
+                        fontWeight = "bold";
+                    } else if (rating === "매수") {
+                        color = "#a3ff00";
+                        fontWeight = "600";
+                    } else if (rating === "강력매도") {
+                        color = "#ff3333";
+                        fontWeight = "bold";
+                    } else if (rating === "매도") {
+                        color = "#ff8833";
+                        fontWeight = "600";
+                    } else { // 유지
+                        color = "#ffcc00";
+                        fontWeight = "normal";
+                    }
+                    
+                    row.innerHTML = `
+                        <td style="padding: 10px 8px; font-weight: 600;">${op.name}</td>
+                        <td style="padding: 10px 8px; color: var(--text-muted); font-family: monospace; font-size: 10px;">${op.index}</td>
+                        <td style="padding: 10px 8px; text-align: right; font-family: 'Orbitron', monospace;">${op.value.toLocaleString('ko-KR', {maximumFractionDigits: 2})}</td>
+                        <td style="padding: 10px 8px; text-align: center;">
+                            <span style="color: ${color}; font-weight: ${fontWeight};">${rating}</span>
+                        </td>
+                        <td style="padding: 10px 8px; line-height: 1.4; color: var(--text-muted);">${op.reason}</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            } else {
+                tableBody.innerHTML = `<tr><td colspan="5" style="padding: 20px; text-align: center; color: var(--text-muted);">투자 의견을 불러오는데 실패했습니다.</td></tr>`;
+            }
+        } catch (e) {
+            console.error("Failed to load investment opinions:", e);
+            tableBody.innerHTML = `<tr><td colspan="5" style="padding: 20px; text-align: center; color: var(--text-muted);">오류: ${e.message}</td></tr>`;
+        }
+
     }
 
     // ==========================================================================
@@ -634,7 +775,11 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         try {
-            const response = await fetch(API_PORTFOLIO);
+            const response = await fetch(`${API_PORTFOLIO}?_t=${Date.now()}`);
+            if (response.status === 401) {
+                window.location.href = "/login.html";
+                return;
+            }
             if (!response.ok) throw new Error("Portfolio load failed");
             
             portfolioSettings = await response.json();
@@ -695,6 +840,7 @@ document.addEventListener("DOMContentLoaded", () => {
         
         holdingsList.innerHTML = `
             <tr class="skeleton-row">
+                <td><span class="skeleton-placeholder" style="width: 45px;"></span></td>
                 <td><span class="skeleton-placeholder" style="width: 50px;"></span></td>
                 <td><span class="skeleton-placeholder" style="width: 120px;"></span></td>
                 <td><span class="skeleton-placeholder" style="width: 40px;"></span></td>
@@ -708,6 +854,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 <td><span class="skeleton-placeholder" style="width: 40px;"></span></td>
             </tr>
             <tr class="skeleton-row">
+                <td><span class="skeleton-placeholder" style="width: 45px;"></span></td>
                 <td><span class="skeleton-placeholder" style="width: 60px;"></span></td>
                 <td><span class="skeleton-placeholder" style="width: 100px;"></span></td>
                 <td><span class="skeleton-placeholder" style="width: 40px;"></span></td>
@@ -723,16 +870,31 @@ document.addEventListener("DOMContentLoaded", () => {
         `;
         
         try {
-            const response = await fetch(API_PORTFOLIO_GSPREAD);
+            const response = await fetch(`${API_PORTFOLIO_GSPREAD}?_t=${Date.now()}`);
+            if (response.status === 401) {
+                window.location.href = "/login.html";
+                return;
+            }
             if (!response.ok) throw new Error("API response not OK");
             
             const data = await response.json();
             portfolioHoldings = data;
-            await renderGspreadPortfolio(data);
+            
+            if (currentSortKey) {
+                const targetKey = currentSortKey;
+                const desiredOrder = currentSortOrder;
+                currentSortKey = ""; // Reset to force no-toggle in next call
+                sortHoldings(targetKey);
+                if (currentSortOrder !== desiredOrder) {
+                    sortHoldings(targetKey); // Toggle again to match original order
+                }
+            } else {
+                await renderGspreadPortfolio(data);
+            }
             tryRenderCharts();
         } catch (error) {
             console.error("Failed to load Google Sheet holdings:", error);
-            holdingsList.innerHTML = `<tr><td colspan="11" class="loading-holdings" style="color: var(--accent-red);">구글 스프레드시트 보유 종목 데이터를 불러오지 못했습니다. 연동 설정을 확인하십시오.</td></tr>`;
+            holdingsList.innerHTML = `<tr><td colspan="12" class="loading-holdings" style="color: var(--accent-red);">구글 스프레드시트 보유 종목 데이터를 불러오지 못했습니다. 연동 설정을 확인하십시오.</td></tr>`;
         }
     }
 
@@ -740,7 +902,7 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!holdingsList) return;
         
         if (!holdings || holdings.length === 0) {
-            holdingsList.innerHTML = `<tr><td colspan="11" class="loading-holdings">보유 중인 종목이 없습니다. (보유량 > 0 필터링)</td></tr>`;
+            holdingsList.innerHTML = `<tr><td colspan="12" class="loading-holdings">보유 중인 종목이 없습니다. (보유량 > 0 필터링)</td></tr>`;
             return;
         }
 
@@ -749,7 +911,7 @@ document.addEventListener("DOMContentLoaded", () => {
         let totalEvaluation = 0.0;
 
         holdings.forEach(item => {
-            const isKRW = item.ticker.toLowerCase().includes(".ks");
+            const isKRW = item.ticker.toLowerCase().includes(".ks") || item.ticker.toUpperCase() === "CASH";
             const rate = isKRW ? 1.0 : exchangeRateUSD;
             
             totalInvested += (item.total_purchase || 0.0) * rate;
@@ -792,10 +954,10 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         }
 
-        holdings.forEach(item => {
+        holdings.forEach((item, index) => {
             const tr = document.createElement("tr");
             
-            const isKRW = item.ticker.toLowerCase().includes(".ks");
+            const isKRW = item.ticker.toLowerCase().includes(".ks") || item.ticker.toUpperCase() === "CASH";
             const rate = isKRW ? 1.0 : exchangeRateUSD;
             const profitVal = parseFloat(item.profit) || 0.0;
             const isPositive = profitVal > 0;
@@ -819,7 +981,12 @@ document.addEventListener("DOMContentLoaded", () => {
             if (isPositive) formattedProfit = "+" + formattedProfit;
             else if (isNegative) formattedProfit = "-" + formattedProfit;
             
+            const accountType = item.account_type || "일반주식";
+            const badgeClass = accountType === "개인연금" ? "badge-pension" : "badge-stock";
+            const badgeHtml = `<span class="badge ${badgeClass}">${accountType}</span>`;
+            
             tr.innerHTML = `
+                <td>${badgeHtml}</td>
                 <td class="ticker-cell">${item.ticker.toUpperCase()}</td>
                 <td class="mobile-ellipsis">${item.name}</td>
                 <td class="number-cell hide-on-mobile">${formattedQty}</td>
@@ -831,26 +998,157 @@ document.addEventListener("DOMContentLoaded", () => {
                 <td class="number-cell ${returnClass}">${item.roi}</td>
                 <td class="number-cell hide-on-mobile" style="font-family: 'Orbitron', monospace;">${item.weight}</td>
                 <td class="number-cell" style="font-family: 'Orbitron', monospace; color: var(--accent-cyan);">${formattedEvalWeight}</td>
+                <td style="text-align: center;">
+                    <div class="trend-container">
+                        <div class="sparkline-container" data-ticker="${item.ticker}" data-index="${index}" title="상세 차트 보기" style="cursor: pointer;">
+                            <span class="skeleton-placeholder" style="width: 120px; height: 34px; display: inline-block; margin-top: 2px;"></span>
+                        </div>
+                    </div>
+                </td>
             `;
             
             holdingsList.appendChild(tr);
+        });
+        
+        // Ensure sort header UI is kept in sync when rendered (e.g. after refresh)
+        updateSortHeadersUI();
+        loadSparklinesForHoldings();
+    }
+
+    function sortHoldings(key) {
+        if (!portfolioHoldings || portfolioHoldings.length === 0) return;
+        
+        if (currentSortKey === key) {
+            currentSortOrder = currentSortOrder === "asc" ? "desc" : "asc";
+        } else {
+            currentSortKey = key;
+            // Default to descending for numbers, ascending for strings
+            const numericKeys = ["quantity", "current_price", "purchase_price", "total_purchase", "total_evaluation", "profit", "roi", "weight", "eval_weight", "trend_pct"];
+            currentSortOrder = numericKeys.includes(key) ? "desc" : "asc";
+        }
+
+        portfolioHoldings.sort((a, b) => {
+            // Force account_type grouping when sorting by other columns
+            if (key !== "account_type") {
+                const typeA = a.account_type || "일반주식";
+                const typeB = b.account_type || "일반주식";
+                if (typeA !== typeB) {
+                    return typeA === "개인연금" ? -1 : 1;
+                }
+            }
+
+            let valA, valB;
+
+            if (key === "eval_weight") {
+                const rateA = (a.ticker.toLowerCase().includes(".ks") || a.ticker.toUpperCase() === "CASH") ? 1.0 : exchangeRateUSD;
+                const rateB = (b.ticker.toLowerCase().includes(".ks") || b.ticker.toUpperCase() === "CASH") ? 1.0 : exchangeRateUSD;
+                valA = (a.total_evaluation || 0.0) * rateA;
+                valB = (b.total_evaluation || 0.0) * rateB;
+            } else if (key === "roi") {
+                valA = parseFloat(a.roi.replace("%", "")) || 0.0;
+                valB = parseFloat(b.roi.replace("%", "")) || 0.0;
+            } else if (key === "weight") {
+                valA = parseFloat(a.weight.replace("%", "")) || 0.0;
+                valB = parseFloat(b.weight.replace("%", "")) || 0.0;
+            } else if (key === "trend_pct") {
+                valA = a.trend_pct !== undefined && a.trend_pct !== null ? a.trend_pct : -999999;
+                valB = b.trend_pct !== undefined && b.trend_pct !== null ? b.trend_pct : -999999;
+            } else if (key === "quantity" || key === "current_price" || key === "purchase_price" || key === "total_purchase" || key === "total_evaluation" || key === "profit") {
+                valA = parseFloat(a[key]) || 0.0;
+                valB = parseFloat(b[key]) || 0.0;
+            } else {
+                valA = a[key] ? a[key].toString().toLowerCase() : "";
+                valB = b[key] ? b[key].toString().toLowerCase() : "";
+            }
+
+            if (valA < valB) return currentSortOrder === "asc" ? -1 : 1;
+            if (valA > valB) return currentSortOrder === "asc" ? 1 : -1;
+            return 0;
+        });
+
+        renderGspreadPortfolio(portfolioHoldings);
+    }
+
+    function updateSortHeadersUI() {
+        const headers = document.querySelectorAll("#holdings-table th.sortable");
+        headers.forEach(th => {
+            const key = th.getAttribute("data-sort");
+            const iconSpan = th.querySelector(".sort-icon");
+            if (iconSpan) {
+                if (key === currentSortKey) {
+                    iconSpan.innerText = currentSortOrder === "asc" ? "▲" : "▼";
+                    th.classList.add("active-sort");
+                } else {
+                    iconSpan.innerText = "↕";
+                    th.classList.remove("active-sort");
+                }
+            }
         });
     }
 
     function tryRenderCharts() {
         if (portfolioHoldings && portfolioSettings) {
-            const targetAlloc = portfolioSettings.target_allocation || { cash: 0.1, stock: 0.6, bond: 0.2, commodity: 0.1 };
+            // Use dynamic target allocation if available, fallback to static target_allocation
+            const targetAlloc = portfolioSettings.dynamic_target_allocation || portfolioSettings.target_allocation || { cash: 0.1, stock: 0.5, bond: 0.2, gold: 0.1, commodity: 0.1 };
             const cashVal = portfolioSettings.cash || 0;
             updateAllocationCharts(portfolioHoldings, targetAlloc, cashVal, exchangeRateUSD);
+            
+            // Display dynamic rules triggers in UI
+            renderDynamicRulesUI(portfolioSettings.rules_status);
         }
+    }
+
+    function renderDynamicRulesUI(rulesStatus) {
+        const rulesBar = document.getElementById("dynamic-rules-bar");
+        const rulesTriggers = document.getElementById("dynamic-rules-triggers");
+        if (!rulesBar || !rulesTriggers) return;
+        
+        if (!rulesStatus) {
+            rulesBar.classList.add("hidden");
+            rulesBar.style.display = "none";
+            return;
+        }
+        
+        rulesBar.classList.remove("hidden");
+        rulesBar.style.display = "flex";
+        
+        let html = "";
+        
+        // Rule 1: Yield
+        const yVal = rulesStatus.yield_30y !== null && rulesStatus.yield_30y !== undefined ? rulesStatus.yield_30y.toFixed(2) + "%" : "로딩 실패";
+        if (rulesStatus.yield_30y_triggered) {
+            html += `<span style="background: rgba(0, 242, 254, 0.1); border: 1px solid var(--accent-cyan); color: #00f2fe; padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; gap: 5px;">
+                🔴 <strong>Rule 1 활성화 (US 30Y Yield: ${yVal})</strong>: 채권 비중 +5% 상향 (현금에서 차감)
+            </span>`;
+        } else {
+            html += `<span style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); padding: 4px 8px; border-radius: 4px;">
+                ⚪ Rule 1 비활성 (US 30Y Yield: ${yVal})
+            </span>`;
+        }
+        
+        // Rule 2: VIX
+        const vVal = rulesStatus.vix !== null && rulesStatus.vix !== undefined ? rulesStatus.vix.toFixed(2) : "로딩 실패";
+        if (rulesStatus.vix_triggered) {
+            html += `<span style="background: rgba(255, 77, 77, 0.1); border: 1px solid #ff4d4d; color: #ff4d4d; padding: 4px 8px; border-radius: 4px; display: flex; align-items: center; gap: 5px;">
+                🛡️ <strong>Rule 2 보호모드 (VIX: ${vVal})</strong>: 테크 비중 축소 (주식 -10%, 현금 +10%)
+            </span>`;
+        } else {
+            html += `<span style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); padding: 4px 8px; border-radius: 4px;">
+                ⚪ Rule 2 비활성 (VIX: ${vVal})
+            </span>`;
+        }
+        
+        rulesTriggers.innerHTML = html;
     }
 
     function updateAllocationCharts(holdings, targetAllocation, cashBase, exchangeRate) {
         let totalEvaluation = 0;
-        let classValues = { stock: 0, bond: 0, commodity: 0, cash: cashBase };
+        // cashBase는 holdings에 포함된 asset_class="cash" 항목의 총합이므로 별도로 더하지 않음
+        let classValues = { stock: 0, bond: 0, gold: 0, commodity: 0, cash: 0 };
 
         holdings.forEach(item => {
-            const isKRW = item.ticker.toLowerCase().includes(".ks");
+            // CASH 티커는 KRW 자산 / .ks로 끝나는 한국 주식도 KRW
+            const isKRW = item.ticker.toLowerCase().includes(".ks") || item.ticker.toUpperCase() === "CASH";
             const rate = isKRW ? 1.0 : exchangeRate;
             const evalKRW = (item.total_evaluation || 0.0) * rate;
             
@@ -862,20 +1160,28 @@ document.addEventListener("DOMContentLoaded", () => {
                 classValues[assetClass] = evalKRW;
             }
         });
+
+        // holdings에 cash 자산이 없을 경우, cashBase를 별도 현금으로 추가
+        if (classValues.cash === 0 && cashBase > 0) {
+            classValues.cash = cashBase;
+            totalEvaluation += cashBase;
+        }
         
-        const totalPortfolioValue = totalEvaluation + cashBase;
+        const totalPortfolioValue = totalEvaluation;
         
         const currentWeights = {
             cash: totalPortfolioValue > 0 ? (classValues.cash / totalPortfolioValue) : 0,
             stock: totalPortfolioValue > 0 ? (classValues.stock / totalPortfolioValue) : 0,
             bond: totalPortfolioValue > 0 ? (classValues.bond / totalPortfolioValue) : 0,
+            gold: totalPortfolioValue > 0 ? (classValues.gold / totalPortfolioValue) : 0,
             commodity: totalPortfolioValue > 0 ? (classValues.commodity / totalPortfolioValue) : 0
         };
 
         const targetWeights = {
             cash: targetAllocation.cash || 0.1,
-            stock: targetAllocation.stock || 0.6,
+            stock: targetAllocation.stock || 0.5,
             bond: targetAllocation.bond || 0.2,
+            gold: targetAllocation.gold || 0.1,
             commodity: targetAllocation.commodity || 0.1
         };
 
@@ -885,39 +1191,24 @@ document.addEventListener("DOMContentLoaded", () => {
             const pieCtx = pieCanvas.getContext('2d');
             if (pieChart) pieChart.destroy();
             
-            // Create gradients for doughnut slices
-            const gCash = pieCtx.createLinearGradient(0, 0, 0, 150);
-            gCash.addColorStop(0, '#5e6675');
-            gCash.addColorStop(1, '#1e293b');
-
-            const gStock = pieCtx.createLinearGradient(0, 0, 0, 150);
-            gStock.addColorStop(0, '#00f2fe');
-            gStock.addColorStop(1, '#4facfe');
-
-            const gBond = pieCtx.createLinearGradient(0, 0, 0, 150);
-            gBond.addColorStop(0, '#0066ff');
-            gBond.addColorStop(1, '#7000ff');
-
-            const gCommodity = pieCtx.createLinearGradient(0, 0, 0, 150);
-            gCommodity.addColorStop(0, '#f59e0b');
-            gCommodity.addColorStop(1, '#d97706');
-            
             pieChart = new Chart(pieCtx, {
                 type: 'doughnut',
                 data: {
-                    labels: ['현금 (Cash)', '주식 (Stock)', '채권 (Bond)', '원자재 (Commodity)'],
+                    labels: ['현금 (Cash)', '주식 (Stock)', '채권 (Bond)', '금 (Gold)', '원자재 (Commodity)'],
                     datasets: [{
                         data: [
                             (currentWeights.cash * 100).toFixed(1),
                             (currentWeights.stock * 100).toFixed(1),
                             (currentWeights.bond * 100).toFixed(1),
+                            (currentWeights.gold * 100).toFixed(1),
                             (currentWeights.commodity * 100).toFixed(1)
                         ],
                         backgroundColor: [
-                            gCash,       // Cash gradient
-                            gStock,      // Stock gradient
-                            gBond,       // Bond gradient
-                            gCommodity   // Commodity gradient
+                            '#475569',   // Cash: Slate Grey
+                            '#0ea5e9',   // Stock: Sky Blue
+                            '#8b5cf6',   // Bond: Violet Purple
+                            '#eab308',   // Gold: Golden Yellow
+                            '#f97316'    // Commodity: Amber Orange
                         ],
                         borderColor: 'rgba(255, 255, 255, 0.1)',
                         borderWidth: 1
@@ -960,7 +1251,7 @@ document.addEventListener("DOMContentLoaded", () => {
             compareChart = new Chart(compareCtx, {
                 type: 'bar',
                 data: {
-                    labels: ['현금', '주식', '채권', '원자재'],
+                    labels: ['현금', '주식', '채권', '금', '원자재'],
                     datasets: [
                         {
                             label: '현재 비중 (%)',
@@ -968,6 +1259,7 @@ document.addEventListener("DOMContentLoaded", () => {
                                 (currentWeights.cash * 100).toFixed(1),
                                 (currentWeights.stock * 100).toFixed(1),
                                 (currentWeights.bond * 100).toFixed(1),
+                                (currentWeights.gold * 100).toFixed(1),
                                 (currentWeights.commodity * 100).toFixed(1)
                             ],
                             backgroundColor: gCompareCurr,
@@ -980,6 +1272,7 @@ document.addEventListener("DOMContentLoaded", () => {
                                 (targetWeights.cash * 100).toFixed(1),
                                 (targetWeights.stock * 100).toFixed(1),
                                 (targetWeights.bond * 100).toFixed(1),
+                                (targetWeights.gold * 100).toFixed(1),
                                 (targetWeights.commodity * 100).toFixed(1)
                             ],
                             backgroundColor: gCompareTarget,
@@ -1019,7 +1312,11 @@ document.addEventListener("DOMContentLoaded", () => {
     async function loadRebalanceStrategy() {
         if (!rebalanceStrategyDisplay) return;
         try {
-            const response = await fetch(API_PORTFOLIO_REBALANCE);
+            const response = await fetch(`${API_PORTFOLIO_REBALANCE}?_t=${Date.now()}`);
+            if (response.status === 401) {
+                window.location.href = "/login.html";
+                return;
+            }
             if (response.ok) {
                 const data = await response.json();
                 if (data && data.content) {
@@ -1202,7 +1499,11 @@ document.addEventListener("DOMContentLoaded", () => {
     async function loadReportsList() {
         let serverReports = [];
         try {
-            const response = await fetch(API_REPORTS);
+            const response = await fetch(`${API_REPORTS}?_t=${Date.now()}`);
+            if (response.status === 401) {
+                window.location.href = "/login.html";
+                return;
+            }
             if (response.ok) {
                 serverReports = await response.json();
             }
@@ -1280,7 +1581,7 @@ document.addEventListener("DOMContentLoaded", () => {
             renderReportInViewer(item.filename, item.content);
         } else {
             try {
-                const response = await fetch(`${API_REPORTS}/${item.filename}`);
+                const response = await fetch(`${API_REPORTS}/${item.filename}?_t=${Date.now()}`);
                 if (!response.ok) throw new Error("Failed to retrieve report content");
                 
                 const data = await response.json();
@@ -1358,4 +1659,279 @@ document.addEventListener("DOMContentLoaded", () => {
         
         return html;
     }
+
+    // Sparkline & Detailed Modal functions
+    function generateSparklineSVG(prices, volumes) {
+        if (!prices || prices.length < 2) return "";
+        
+        const width = 120;
+        const height = 34;
+        const padding = 2;
+
+        const minPrice = Math.min(...prices);
+        const maxPrice = Math.max(...prices);
+        const priceRange = maxPrice - minPrice || 1;
+
+        const points = prices.map((price, idx) => {
+            const x = padding + (idx / (prices.length - 1)) * (width - padding * 2);
+            const y = height - padding - ((price - minPrice) / priceRange) * (height - padding * 2);
+            return `${x},${y}`;
+        });
+        
+        const pathData = `M ${points.join(" L ")}`;
+
+        const maxVol = Math.max(...volumes) || 1;
+        const barWidth = Math.floor((width - padding * 2) / volumes.length) - 1;
+        
+        let barsHTML = "";
+        volumes.forEach((vol, idx) => {
+            const x = padding + idx * (barWidth + 1);
+            const barHeight = (vol / maxVol) * (height * 0.45);
+            const y = height - barHeight;
+            
+            barsHTML += `<rect x="${x}" y="${y}" width="${Math.max(1, barWidth)}" height="${barHeight}" fill="var(--accent-purple)" opacity="0.35" rx="0.5" />`;
+        });
+
+        return `
+            <svg width="${width}" height="${height}" class="sparkline-svg">
+                ${barsHTML}
+                <path d="${pathData}" stroke="var(--accent-cyan)" fill="none" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="filter: drop-shadow(0px 0px 3px rgba(0, 242, 254, 0.6));" />
+            </svg>
+        `;
+    }
+
+    async function loadSparklinesForHoldings() {
+        const containers = document.querySelectorAll("#holdings-list .sparkline-container");
+        containers.forEach(async (container) => {
+            const index = container.dataset.index;
+            if (index === undefined) return;
+            
+            const item = portfolioHoldings ? portfolioHoldings[index] : null;
+            if (!item) return;
+
+            const ticker = item.ticker;
+            if (!ticker) return;
+
+            if (ticker.toUpperCase() === "CASH") {
+                container.innerHTML = `<span style="color: var(--text-muted); font-size: 0.8rem;">-</span>`;
+                item.trend_pct = null;
+                return;
+            }
+
+            // Already fetched? Use it
+            if (item.sparkline_prices) {
+                renderSparklineDOM(container, item.sparkline_prices, item.sparkline_volumes, item.trend_pct);
+                return;
+            }
+
+            try {
+                const resp = await fetch(`/api/screener/history/${ticker}?period=1mo`);
+                if (!resp.ok) throw new Error(`Failed to fetch history for ${ticker}`);
+                const data = await resp.json();
+                
+                item.sparkline_prices = data.prices;
+                item.sparkline_volumes = data.volumes;
+                
+                let trendPct = null;
+                const validPrices = (data.prices || []).filter(p => p !== null && p !== undefined);
+                if (validPrices.length >= 2) {
+                    const first = validPrices[0];
+                    const last = validPrices[validPrices.length - 1];
+                    trendPct = (last - first) / first * 100;
+                }
+                item.trend_pct = trendPct;
+
+                renderSparklineDOM(container, item.sparkline_prices, item.sparkline_volumes, item.trend_pct);
+            } catch (err) {
+                console.error(`Failed to load sparkline for ${ticker}:`, err);
+                container.innerHTML = `<span style="color: var(--accent-red); font-size: 0.8rem;">Error</span>`;
+            }
+        });
+    }
+
+    function renderSparklineDOM(container, prices, volumes, trendPct) {
+        const svg = generateSparklineSVG(prices, volumes);
+        let trendPctBadge = '';
+        if (trendPct !== null && trendPct !== undefined) {
+            const sign = trendPct >= 0 ? '+' : '';
+            const cls = trendPct > 0.5 ? 'trend-pct-up' : trendPct < -0.5 ? 'trend-pct-down' : 'trend-pct-flat';
+            const arrow = trendPct > 0.5 ? '▲' : trendPct < -0.5 ? '▼' : '—';
+            trendPctBadge = `<div class="trend-pct-badge ${cls}">${arrow} ${sign}${trendPct.toFixed(2)}%</div>`;
+        }
+
+        if (svg) {
+            container.innerHTML = `<div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+                ${svg}
+                ${trendPctBadge}
+            </div>`;
+        } else {
+            container.innerHTML = `<span style="color: var(--text-muted); font-size: 0.8rem;">-</span>`;
+        }
+    }
+
+    let detailChartInstance = null;
+    const modalChart = document.getElementById('chart-modal');
+    const modalChartTitle = document.getElementById('modal-title');
+    const modalChartLoading = document.getElementById('modal-loading');
+    const chartCanvas = document.getElementById('detailChart');
+    const btnCloseChart = document.getElementById('btn-close-chart');
+
+    function closeChartModal() {
+        if (modalChart) modalChart.classList.remove('active');
+    }
+
+    if (btnCloseChart) {
+        btnCloseChart.addEventListener('click', closeChartModal);
+    }
+    if (modalChart) {
+        modalChart.addEventListener('click', (e) => {
+            if (e.target === modalChart) closeChartModal();
+        });
+    }
+
+    async function openChartModal(ticker) {
+        if (!modalChart) return;
+        modalChart.classList.add('active');
+        if (modalChartTitle) modalChartTitle.innerText = `${ticker.toUpperCase()} - 1Year Trend (MA5, MA20, MA200)`;
+        if (modalChartLoading) modalChartLoading.style.display = 'block';
+        if (chartCanvas) chartCanvas.style.display = 'none';
+
+        try {
+            const resp = await fetch(`/api/screener/history/${ticker}?period=1y`);
+            if (!resp.ok) throw new Error('Failed to fetch 1y history');
+            const data = await resp.json();
+            
+            if (modalChartLoading) modalChartLoading.style.display = 'none';
+            if (chartCanvas) chartCanvas.style.display = 'block';
+            
+            renderChartJs(data);
+        } catch (err) {
+            console.error(err);
+            if (modalChartLoading) {
+                modalChartLoading.innerHTML = `<span style="color: var(--accent-red);">데이터 로딩 중 오류가 발생했습니다.</span>`;
+            }
+        }
+    }
+
+    function renderChartJs(data) {
+        if (!chartCanvas) return;
+        if (detailChartInstance) {
+            detailChartInstance.destroy();
+        }
+        
+        const ctx = chartCanvas.getContext('2d');
+        
+        detailChartInstance = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.dates,
+                datasets: [
+                    {
+                        label: '주가 (Close)',
+                        data: data.prices,
+                        borderColor: '#00d2ff',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        tension: 0.1,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: '5일선 (MA5)',
+                        data: data.ma5,
+                        borderColor: '#00ff66',
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        tension: 0.1,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: '20일선 (MA20)',
+                        data: data.ma20,
+                        borderColor: '#ff00ff',
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        tension: 0.1,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: '200일선 (MA200)',
+                        data: data.ma200,
+                        borderColor: '#ff9900',
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        tension: 0.1,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: '거래량 (Volume)',
+                        data: data.volumes,
+                        backgroundColor: 'rgba(139, 92, 246, 0.3)',
+                        borderColor: 'rgba(139, 92, 246, 0.7)',
+                        borderWidth: 1,
+                        type: 'bar',
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#cbd5e1',
+                            font: { family: 'Inter' }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: {
+                            color: '#94a3b8',
+                            maxTicksLimit: 12,
+                            font: { family: 'Roboto Mono', size: 10 }
+                        }
+                    },
+                    y: {
+                        position: 'left',
+                        grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                        ticks: {
+                            color: '#94a3b8',
+                            font: { family: 'Roboto Mono', size: 10 }
+                        }
+                    },
+                    y1: {
+                        position: 'right',
+                        grid: { drawOnChartArea: false },
+                        min: 0,
+                        suggestedMax: data.volumes && data.volumes.length ? Math.max(...data.volumes) * 3 : undefined,
+                        ticks: {
+                            color: '#a78bfa',
+                            font: { family: 'Roboto Mono', size: 10 },
+                            callback: function(value) {
+                                if (value >= 1e6) return (value / 1e6).toFixed(1) + 'M';
+                                if (value >= 1e3) return (value / 1e3).toFixed(1) + 'K';
+                                return value;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    if (holdingsList) {
+        holdingsList.addEventListener("click", (e) => {
+            const sparkline = e.target.closest('.sparkline-container');
+            if (sparkline) {
+                const ticker = sparkline.dataset.ticker;
+                if (ticker && ticker.toUpperCase() !== "CASH") {
+                    openChartModal(ticker);
+                }
+            }
+        });
+    }
+
+    window.closeChartModal = closeChartModal;
 });

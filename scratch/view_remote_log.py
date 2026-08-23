@@ -13,7 +13,7 @@ def read_remote_log():
     print(f"Connecting to {host}:{port}...")
     ssh.connect(host, port=port, username=username, password=password)
     
-    cmd = "tail -n 100 /root/stockRecommnad/logs/scheduler.log"
+    cmd = "tail -n 100 /root/stockRecommend/logs/scheduler.log"
     print(f"Running command: {cmd}")
     stdin, stdout, stderr = ssh.exec_command(cmd)
     print(stdout.read().decode())

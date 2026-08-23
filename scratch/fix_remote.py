@@ -27,15 +27,15 @@ def run_remote_commands():
     commands = [
         "apt-get update && apt-get install -y python3-pip python3-venv",
         # recreate venv
-        "rm -rf /root/stockRecommnad/venv",
-        "python3 -m venv /root/stockRecommnad/venv",
+        "rm -rf /root/stockRecommend/venv",
+        "python3 -m venv /root/stockRecommend/venv",
         # install pip if still missing
-        "curl -sS https://bootstrap.pypa.io/get-pip.py | /root/stockRecommnad/venv/bin/python3 || true",
+        "curl -sS https://bootstrap.pypa.io/get-pip.py | /root/stockRecommend/venv/bin/python3 || true",
         # install requirements
-        "/root/stockRecommnad/venv/bin/pip install --upgrade pip",
-        "/root/stockRecommnad/venv/bin/pip install -r /root/stockRecommnad/requirements.txt",
+        "/root/stockRecommend/venv/bin/pip install --upgrade pip",
+        "/root/stockRecommend/venv/bin/pip install -r /root/stockRecommend/requirements.txt",
         # run pipeline to verify
-        "cd /root/stockRecommnad && ./run_pipeline.sh"
+        "cd /root/stockRecommend && ./run_pipeline.sh"
     ]
     
     for cmd in commands:

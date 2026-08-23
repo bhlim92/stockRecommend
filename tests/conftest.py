@@ -49,8 +49,9 @@ def mock_portfolio_json(tmp_path):
             }
         ],
         "target_allocation": {
-            "stock": 0.6,
+            "stock": 0.5,
             "bond": 0.2,
+            "gold": 0.1,
             "commodity": 0.1,
             "cash": 0.1
         }

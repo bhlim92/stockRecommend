@@ -12,7 +12,7 @@ def update_remote_env():
     
     # 1. Read remote .env file
     print("Reading remote .env file...")
-    stdin, stdout, stderr = ssh.exec_command("cat /root/stockRecommnad/.env")
+    stdin, stdout, stderr = ssh.exec_command("cat /root/stockRecommend/.env")
     env_content = stdout.read().decode()
     
     # 2. Check if database variables are already defined
@@ -30,23 +30,23 @@ def update_remote_env():
     if has_db_config:
         print("Database config is already present in remote .env. Cleaning up existing DB config lines...")
         # Remove any existing DB config lines to avoid duplicates
-        clean_cmd = "sed -i '/DB_TYPE=/d; /DB_HOST=/d; /DB_PORT=/d; /DB_USER=/d; /DB_PASSWORD=/d; /DB_NAME=/d' /root/stockRecommnad/.env"
+        clean_cmd = "sed -i '/DB_TYPE=/d; /DB_HOST=/d; /DB_PORT=/d; /DB_USER=/d; /DB_PASSWORD=/d; /DB_NAME=/d' /root/stockRecommend/.env"
         ssh.exec_command(clean_cmd)
         
     print("Appending new Database configuration to remote .env...")
     append_content = "\n" + "\n".join(db_config_lines) + "\n"
     # Write to a temp file and append it
-    ssh.exec_command(f"echo '{append_content}' >> /root/stockRecommnad/.env")
+    ssh.exec_command(f"echo '{append_content}' >> /root/stockRecommend/.env")
     
     # 3. Print updated .env (excluding sensitive API key values for display)
-    stdin, stdout, stderr = ssh.exec_command("cat /root/stockRecommnad/.env")
+    stdin, stdout, stderr = ssh.exec_command("cat /root/stockRecommend/.env")
     updated_env = stdout.read().decode()
     print("\nUpdated remote .env file (first 400 chars):")
     print(updated_env[:400])
     
     # 4. Restart the fastapi service if it runs as systemd
-    print("\nRestarting stock-recommnad/fastapi service on the remote server to apply changes...")
-    ssh.exec_command("systemctl restart stock-recommnad || systemctl restart fastapi || pm2 restart all || killall uvicorn")
+    print("\nRestarting stock-recommend/fastapi service on the remote server to apply changes...")
+    ssh.exec_command("systemctl restart stock-recommend || systemctl restart fastapi || pm2 restart all || killall uvicorn")
     
     ssh.close()
     print("Remote environment update and service restart completed.")

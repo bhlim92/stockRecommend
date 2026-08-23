@@ -435,7 +435,7 @@ def run_pipeline_worker() -> None:
                     logger.warning(f"Could not ingest price history for {ticker}: {str(e)}")
 
             for key, ticker in AppConfig.MACRO_TICKERS.items():
-                if key in ["US10Y", "KR10YT=RR"] or "10Y" in key:
+                if key in ["US10Y", "US30Y", "KR10YT=RR"] or "10Y" in key or "30Y" in key:
                     try:
                         df = fetcher.fetch_bond_yield(ticker, period="1y")
                         market_data["yields"][key] = df
@@ -764,12 +764,94 @@ def refresh_tickers(market: str) -> JSONResponse:
         raise HTTPException(status_code=500, detail=f"Failed to refresh ticker list: {str(e)}")
 
 
+# Cache store for dynamic rules variables to avoid yfinance rate limits
+dynamic_rules_cache = {
+    "timestamp": 0.0,
+    "yield_30y": None,
+    "vix": None
+}
+
+def fetch_dynamic_rules_indicators() -> tuple[Optional[float], Optional[float]]:
+    import time
+    import math
+    import yfinance as yf
+    now = time.time()
+    
+    # Return cached data if it is less than 5 minutes old
+    if dynamic_rules_cache["yield_30y"] is not None and dynamic_rules_cache["vix"] is not None and (now - dynamic_rules_cache["timestamp"] < 300):
+        return dynamic_rules_cache["yield_30y"], dynamic_rules_cache["vix"]
+        
+    yield_30y = None
+    vix = None
+    
+    # Fetch US30Y (^TYX)
+    try:
+        ticker = yf.Ticker("^TYX")
+        val = ticker.fast_info.get('lastPrice')
+        if val is None or math.isnan(val) or math.isinf(val):
+            hist = ticker.history(period="1d", timeout=5)
+            if not hist.empty:
+                val = hist["Close"].iloc[-1]
+        if val is not None and not (math.isnan(val) or math.isinf(val)):
+            yield_30y = float(val)
+    except Exception as e:
+        logger.error(f"Error fetching US30Y yield for dynamic rules: {e}")
+        
+    # Fetch VIX (^VIX)
+    try:
+        ticker = yf.Ticker("^VIX")
+        val = ticker.fast_info.get('lastPrice')
+        if val is None or math.isnan(val) or math.isinf(val):
+            hist = ticker.history(period="1d", timeout=5)
+            if not hist.empty:
+                val = hist["Close"].iloc[-1]
+        if val is not None and not (math.isnan(val) or math.isinf(val)):
+            vix = float(val)
+    except Exception as e:
+        logger.error(f"Error fetching VIX price for dynamic rules: {e}")
+        
+    # Fallback default values if fetching completely fails
+    if yield_30y is None:
+        yield_30y = 4.25
+    if vix is None:
+        vix = 14.5
+        
+    dynamic_rules_cache["yield_30y"] = yield_30y
+    dynamic_rules_cache["vix"] = vix
+    dynamic_rules_cache["timestamp"] = now
+    
+    return yield_30y, vix
+
 @app.get("/api/portfolio")
 def get_portfolio() -> JSONResponse:
-    """Reads and returns the portfolio holdings database."""
+    """Reads and returns the portfolio holdings database, including dynamic target allocations."""
     pm = PortfolioManager(AppConfig.PORTFOLIO_FILE_PATH)
     try:
         data = pm.load_portfolio()
+        
+        # Evaluate dynamic rules
+        try:
+            yield_30y, vix = fetch_dynamic_rules_indicators()
+            rules_eval = pm.evaluate_dynamic_rules(data.get("target_allocation", {}), yield_30y, vix)
+            data["dynamic_target_allocation"] = rules_eval["adjusted_allocation"]
+            data["rules_status"] = {
+                "yield_30y": yield_30y,
+                "vix": vix,
+                "yield_30y_triggered": bool(yield_30y is not None and yield_30y >= 5.0),
+                "vix_triggered": bool(vix is not None and vix >= 20.0),
+                "triggered_rules": rules_eval["triggered_rules"]
+            }
+        except Exception as re:
+            logger.error(f"Failed to evaluate dynamic rules in get_portfolio API: {str(re)}")
+            data["dynamic_target_allocation"] = data.get("target_allocation", {})
+            data["rules_status"] = {
+                "yield_30y": None,
+                "vix": None,
+                "yield_30y_triggered": False,
+                "vix_triggered": False,
+                "triggered_rules": []
+            }
+            
         return JSONResponse(content=data)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Could not load portfolio: {str(e)}")
@@ -1082,15 +1164,42 @@ def generate_rebalance_strategy(req: RebalanceRequest) -> JSONResponse:
                 f"    - 지표: PER={per_str} | PEG={peg_str} | EPS={eps_str} | FWD EPS={fwd_eps_str} | 예상 목표가={target_price_str}\n"
             )
 
-        # 3. Call Gemini to generate strategy
+        # 3. Fetch current yield & VIX and evaluate dynamic rules
+        yield_30y, vix = fetch_dynamic_rules_indicators()
+        pm = PortfolioManager(AppConfig.PORTFOLIO_FILE_PATH)
+        portfolio_settings = pm.load_portfolio()
+        rules_eval = pm.evaluate_dynamic_rules(portfolio_settings.get("target_allocation", {}), yield_30y, vix)
+        dynamic_allocation = rules_eval["adjusted_allocation"]
+        triggered_rules = rules_eval["triggered_rules"]
+
+        # Format rules status for prompt
+        rules_text = f"US 30Y Bond Yield: {yield_30y:.2f}% (Rule 1 triggers at >= 5.0%)\n"
+        rules_text += f"VIX Index: {vix:.2f} (Rule 2 triggers at >= 20)\n"
+        if triggered_rules:
+            rules_text += "ACTIVE TRIGGERS:\n"
+            for tr in triggered_rules:
+                rules_text += f"- {tr}\n"
+        else:
+            rules_text += "No dynamic rules triggered.\n"
+            
+        rules_text += f"\nBASE ALLOCATION TARGETS:\n"
+        for k, v in portfolio_settings.get("target_allocation", {}).items():
+            rules_text += f"- {k}: {v*100:.1f}%\n"
+            
+        rules_text += f"\nDYNAMIC ALLOCATION TARGETS (MUST BE COMPLIED WITH):\n"
+        for k, v in dynamic_allocation.items():
+            rules_text += f"- {k}: {v*100:.1f}%\n"
+
+        # 3.5 Call Gemini to generate strategy
         import google.generativeai as genai
         genai.configure(api_key=req.api_key)
         
         # Format holdings for prompt
         holdings_text = ""
         for h in holdings:
+            account_type = h.get("account_type", "일반주식")
             holdings_text += (
-                f"- Ticker: {h['ticker']} | Name: {h['name']} | Qty: {h['quantity']} "
+                f"- [계좌 구분: {account_type}] Ticker: {h['ticker']} | Name: {h['name']} | Qty: {h['quantity']} "
                 f"| Current Price: {h['current_price']} | Purchase Price: {h['purchase_price']} "
                 f"| Total Purchase: {h['total_purchase']} | Total Evaluation: {h['total_evaluation']} "
                 f"| Profit/Loss: {h['profit']} | ROI: {h['roi']} | Weight: {h['weight']}\n"
@@ -1110,19 +1219,26 @@ Your task is to analyze the investor's current portfolio holdings and compare it
 ### QUANT ENTRY & EVALUATION SCORES (이평선, 거래량, 밸류에이션, 목표가, CANSLIM 분석 기반):
 {scores_text}
 
+### DYNAMIC ASSET ALLOCATION RULES & TARGETS:
+{rules_text}
+
 ---
 
 다음 지침에 맞춰 전문적이고 완성도 높은 한국어 포트폴리오 리밸런싱 전략 보고서(Korean Rebalancing Strategy Report)를 생성해 주세요:
 1. **보고서 제목 (Report Title)**: '# 실시간 AI 포트폴리오 리밸런싱 전략 제안'으로 시작해 주세요.
 2. **종합 자산 분석 요약 (Summary)**: 현재 포트폴리오의 구조(주식, 환율 노출, 섹터 집중 등)와 최근 마켓 국면을 비교 분석하여 주요 기회 및 위험 요인을 서술해 주세요.
-3. **신규 추천 종목 편입 제안 (New Stock Recommendations)**:
+3. **동적 리밸런싱 규칙 반영 (Dynamic Allocation Rules)**:
+   - 현재 US 30Y Bond Yield와 VIX의 수준에 따라 동적 자산 배분 대상 비중(DYNAMIC ALLOCATION TARGETS)이 어떻게 변경되었는지 분석에 반영해 주세요.
+   - 규칙 1 또는 규칙 2가 활성화된 경우, 이로 인한 비중 조정이 왜 필요하며 투자자에게 어떤 안전장치 또는 기회를 제공하는지 설명해 주세요.
+4. **신규 추천 종목 편입 제안 (New Stock Recommendations)**:
    - 최신 투자 추천 보고서에서 매수/롱(Buy/Long)으로 추천하는 종목들 중, 현재 포트폴리오에 **보유하고 있지 않은 신규 추천 종목**이 있다면 반드시 포트폴리오에 새롭게 매수/편입하도록 제안해야 합니다.
    - 기존의 비중이 비대하거나 성과가 좋지 않은 종목, 또는 추천 보고서에서 매도/회피(Sell/Avoid)를 권고하는 종목의 비중을 일부 축소하여 확보한 자금을 이 신규 추천 종목의 매수 자금으로 활용하는 구체적인 자금 배분 전략을 제시해 주세요.
-4. **구체적인 리밸런싱 액션 플랜 (Rebalancing Table)**: 사용자가 한눈에 매매 내용을 볼 수 있게 마크다운 테이블 형식으로 작성해 주세요.
+5. **구체적인 리밸런싱 액션 플랜 (Rebalancing Table)**: 사용자가 한눈에 매매 내용을 볼 수 있게 마크다운 테이블 형식으로 작성해 주세요.
    - **열 구성**: | 종목명 (티커) | 현재 비중 | 제안 액션 (매수/매도/유지/신규 매수) | 제안 비중/방향 | 진입 점수 (이평선/거래량) | 평가 점수 (밸류/성장/CANSLIM) | 핵심 근거 |
    - 진입 점수 및 평가 점수 열에는 제공된 ### QUANT ENTRY & EVALUATION SCORES 의 값을 정확하게 표기해 주세요.
    - 신규 편입 종목의 경우 '현재 비중'을 '0.0% (없음)'으로 기재하고 '제안 액션'을 '신규 매수' 또는 '신규 편입'으로 표기해 주세요.
-5. **세부 조정 근거 및 추천 사유 (Detailed Rationale)**:
+   - 제안 비중/방향 열은 DYNAMIC ALLOCATION TARGETS를 충족할 수 있도록 구성되어야 합니다.
+6. **세부 조정 근거 및 추천 사유 (Detailed Rationale)**:
    - 각 종목에 대해 왜 그러한 제안(매수/매도/유지/신규 매수)을 하는지 구체적인 근거를 제시해 주세요.
    - **중요**: 세부 근거 작성 시, 각 종목의 5일, 20일, 200일 이평선 및 거래량 추이(진입 점수 요인)와 PER, PEG, Forward EPS 성장성, 목표가 괴리율(평가 점수 요인) 수치를 구체적으로 언급하며 설명해 주세요.
 
@@ -1249,3 +1365,202 @@ def auth_logout() -> JSONResponse:
     response = JSONResponse(content={"status": "success", "message": "Logged out successfully."})
     response.delete_cookie("auth_token")
     return response
+
+# Cache store for macro indices to prevent aggressive yfinance rate limiting
+indices_cache = {
+    "timestamp": 0.0,
+    "data": None
+}
+
+@app.get("/api/macro/indices")
+def get_macro_indices():
+    import yfinance as yf
+    import time
+    import math
+    
+    def is_valid_float(val):
+        try:
+            fval = float(val)
+            return not (math.isnan(fval) or math.isinf(fval))
+        except (ValueError, TypeError):
+            return False
+            
+    now = time.time()
+    
+    # Return cached data if it is less than 5 minutes (300 seconds) old
+    if indices_cache["data"] and (now - indices_cache["timestamp"] < 300):
+        return indices_cache["data"]
+        
+    data = {}
+    
+    # 1. KOSPI Index (^KS11)
+    try:
+        ticker = yf.Ticker("^KS11")
+        last_price = ticker.fast_info.get('lastPrice')
+        prev_close = ticker.fast_info.get('previousClose')
+        if is_valid_float(last_price) and is_valid_float(prev_close):
+            change = last_price - prev_close
+            pct_change = (change / prev_close) * 100
+            
+            data["kospi"] = {
+                "value": float(round(last_price, 2)),
+                "change": float(round(change, 2)),
+                "pct_change": float(round(pct_change, 2))
+            }
+    except Exception as e:
+        logger.error(f"Error fetching KOSPI index: {e}")
+
+    # 2. S&P 500 Index (^GSPC)
+    try:
+        ticker = yf.Ticker("^GSPC")
+        last_price = ticker.fast_info.get('lastPrice')
+        prev_close = ticker.fast_info.get('previousClose')
+        if is_valid_float(last_price) and is_valid_float(prev_close):
+            change = last_price - prev_close
+            pct_change = (change / prev_close) * 100
+            
+            data["sp500"] = {
+                "value": float(round(last_price, 2)),
+                "change": float(round(change, 2)),
+                "pct_change": float(round(pct_change, 2))
+            }
+    except Exception as e:
+        logger.error(f"Error fetching S&P 500 index: {e}")
+
+    # 3. CNN Fear & Greed Index
+    try:
+        import requests
+        fng_url = "https://production.dataviz.cnn.io/index/fearandgreed/graphdata"
+        fng_headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+        fng_res = requests.get(fng_url, headers=fng_headers, timeout=5)
+        if fng_res.status_code == 200:
+            fng_json = fng_res.json()
+            fng_data = fng_json.get("fear_and_greed", {})
+            if fng_data and "score" in fng_data:
+                data["fear_greed"] = {
+                    "score": int(fng_data["score"]),
+                    "rating": str(fng_data["rating"])
+                }
+    except Exception as e:
+        logger.error(f"Error fetching Fear & Greed Index: {e}")
+
+    # Fallback to realistic defaults if fetching completely fails or contains invalid floats
+    if "kospi" not in data or not is_valid_float(data["kospi"]["value"]):
+        data["kospi"] = {"value": 2668.21, "change": 21.72, "pct_change": 0.82}
+    if "sp500" not in data or not is_valid_float(data["sp500"]["value"]):
+        data["sp500"] = {"value": 5283.40, "change": 60.10, "pct_change": 1.15}
+    if "fear_greed" not in data:
+        data["fear_greed"] = {"score": 50, "rating": "neutral"}
+
+    indices_cache["data"] = data
+    indices_cache["timestamp"] = now
+    return data
+
+@app.get("/api/macro/opinions")
+def get_macro_opinions() -> JSONResponse:
+    """Returns investment opinions (Buy/Sell/Hold) for stock, bond, gold, commodity, and cash."""
+    import yfinance as yf
+    import pandas as pd
+    import numpy as np
+    import math
+    
+    def is_valid_float(val):
+        try:
+            fval = float(val)
+            return not (math.isnan(fval) or math.isinf(fval))
+        except (ValueError, TypeError):
+            return False
+            
+    tickers = {
+        "stock_us": {"name": "주식 (미국 - S&P 500)", "symbol": "^GSPC", "is_yield": False},
+        "stock_kr": {"name": "주식 (한국 - KOSPI 200)", "symbol": "^KS200", "is_yield": False},
+        "bond": {"name": "채권 (미국채 20년+ ETF)", "symbol": "TLT", "is_yield": False},
+        "gold": {"name": "금 (금 선물)", "symbol": "GC=F", "is_yield": False},
+        "commodity": {"name": "원자재 (WTI 원유 선물)", "symbol": "CL=F", "is_yield": False},
+        "cash": {"name": "현금 (미국 3M 국채 금리)", "symbol": "^IRX", "is_yield": True}
+    }
+    
+    opinions = []
+    
+    for key, info in tickers.items():
+        symbol = info["symbol"]
+        name = info["name"]
+        is_yield = info["is_yield"]
+        
+        try:
+            t = yf.Ticker(symbol)
+            df = t.history(period="1y")
+            if df.empty and symbol == "^KS200":
+                # Fallback to KOSPI index
+                t = yf.Ticker("^KS11")
+                df = t.history(period="1y")
+                
+            if df.empty:
+                raise ValueError(f"No history returned for {symbol}")
+                
+            close = df["Close"].iloc[-1]
+            prev_close = df["Close"].iloc[-2]
+            pct_change = ((close - prev_close) / prev_close) * 100
+            
+            # Calculate moving averages
+            ma20 = df["Close"].rolling(window=20).mean().iloc[-1]
+            ma50 = df["Close"].rolling(window=50).mean().iloc[-1]
+            ma200 = df["Close"].rolling(window=200).mean().iloc[-1]
+            
+            if is_yield:
+                # For Cash (yield-based)
+                if close > ma50 > ma200:
+                    opinion = "강력매수"
+                    desc = f"단기 국채금리({close:.2f}%)가 상승 추세선 위에 위치하여 현금 보유 매력 매우 높음."
+                elif close > ma200:
+                    opinion = "매수"
+                    desc = f"고금리({close:.2f}%) 유지 국면으로 단기 자금 운용 시 안정적 이자 수익 기대."
+                else:
+                    opinion = "유지"
+                    desc = f"금리 안정화 상태({close:.2f}%). 자산배분 유동성 확보 목적으로 비중 유지."
+            else:
+                # For standard assets
+                if close > ma20 > ma200 and close > ma50:
+                    opinion = "강력매수"
+                    desc = "주요 이동평균선(20/50/200일) 정배열 상태로 강력한 동반 강세 랠리 지속."
+                elif close > ma200:
+                    if close > ma20:
+                        opinion = "매수"
+                        desc = "200일 장기 추세선을 상회 중이며 단기 눌림목 후 재상승 흐름 유효."
+                    else:
+                        opinion = "유지"
+                        desc = "장기 추세는 우상향이나 단기 과열에 따른 조정 구간. 비중 유지 권고."
+                else:
+                    if close < ma20 < ma200:
+                        opinion = "강력매도"
+                        desc = "이동평균선 역배열 상태로 하락 압력 가중. 추가 조정 가능성 대비 리스크 축소."
+                    else:
+                        opinion = "매도"
+                        desc = "200일 장기 추세선 붕괴. 보수적 관점 유지 및 비중 축소 권고."
+                        
+            opinions.append({
+                "asset_class": key,
+                "name": name,
+                "index": symbol,
+                "value": float(round(close, 2)),
+                "change": float(round(pct_change, 2)),
+                "opinion": opinion,
+                "reason": desc
+            })
+        except Exception as e:
+            logger.error(f"Failed to calculate opinion for {name} ({symbol}): {e}")
+            opinions.append({
+                "asset_class": key,
+                "name": name,
+                "index": symbol,
+                "value": 0.0,
+                "change": 0.0,
+                "opinion": "유지",
+                "reason": f"데이터 수집 일시적 오류. 기존 비중을 유지하십시오."
+            })
+            
+    return JSONResponse(content=opinions)
+
+

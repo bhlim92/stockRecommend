@@ -5,7 +5,7 @@
 setlocal enabledelayedexpansion
 
 :: Set project directory paths
-set PROJECT_DIR=c:\Users\samsung\proj\stockRecommnad
+set PROJECT_DIR=c:\Users\samsung\proj\stockRecommend
 set VENV_DIR=%PROJECT_DIR%\venv
 set LOGS_DIR=%PROJECT_DIR%\logs
 

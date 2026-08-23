@@ -46,61 +46,90 @@
         <!-- Main Dashboard Section -->
         <div class="dashboard-grid">
             
-            <!-- Left Panel: Pipeline Control & Progress -->
-            <section class="glass-card control-panel">
-                <div class="card-header">
-                    <h2>자동 분석 엔진 제어</h2>
-                    <span class="card-subtitle">실시간 주식 발굴 및 자산배분 계산</span>
-                </div>
-                
-                <div class="control-actions">
-                    <button class="btn-primary" id="btn-run-pipeline">
-                        <span class="btn-text">지금 분석 시작하기 (ON-DEMAND)</span>
-                        <span class="btn-loader hidden"></span>
-                    </button>
-                </div>
+            <!-- Left Column: Control & Signals -->
+            <div style="display: flex; flex-direction: column; gap: 20px;">
+                <!-- Left Panel: Pipeline Control & Progress -->
+                <section class="glass-card control-panel">
+                    <div class="card-header">
+                        <h2>자동 분석 엔진 제어</h2>
+                        <span class="card-subtitle">실시간 주식 발굴 및 자산배분 계산</span>
+                    </div>
+                    
+                    <div class="control-actions">
+                        <button class="btn-primary" id="btn-run-pipeline">
+                            <span class="btn-text">지금 분석 시작하기 (ON-DEMAND)</span>
+                            <span class="btn-loader hidden"></span>
+                        </button>
+                    </div>
 
-                <!-- Cooldown Timer UI -->
-                <div class="cooldown-timer-box hidden" id="cooldown-timer-box">
-                    <div class="cooldown-timer-header">
-                        <span class="cooldown-timer-title">⏱️ Rate Limit API 재호출 대기 지연</span>
-                        <span class="cooldown-timer-seconds" id="cooldown-timer-seconds">13s</span>
+                    <!-- Cooldown Timer UI -->
+                    <div class="cooldown-timer-box hidden" id="cooldown-timer-box">
+                        <div class="cooldown-timer-header">
+                            <span class="cooldown-timer-title">⏱️ Rate Limit API 재호출 대기 지연</span>
+                            <span class="cooldown-timer-seconds" id="cooldown-timer-seconds">13s</span>
+                        </div>
+                        <div class="cooldown-bar-container">
+                            <div class="cooldown-bar-fill" id="cooldown-timer-bar" style="width: 100%;"></div>
+                        </div>
                     </div>
-                    <div class="cooldown-bar-container">
-                        <div class="cooldown-bar-fill" id="cooldown-timer-bar" style="width: 100%;"></div>
-                    </div>
-                </div>
 
-                <div class="progress-section">
-                    <div class="progress-labels">
-                        <span class="step-label" id="current-step-text">대기 중...</span>
-                        <span class="progress-percent" id="progress-percent-text">0%</span>
+                    <div class="progress-section">
+                        <div class="progress-labels">
+                            <span class="step-label" id="current-step-text">대기 중...</span>
+                            <span class="progress-percent" id="progress-percent-text">0%</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar-fill" id="progress-bar-fill" style="width: 0%"></div>
+                        </div>
                     </div>
-                    <div class="progress-bar-container">
-                        <div class="progress-bar-fill" id="progress-bar-fill" style="width: 0%"></div>
-                    </div>
-                </div>
 
-                <div class="steps-list">
-                    <div class="step-item" id="step-ingesting"><span class="step-dot"></span> 1. 금융 데이터 수집</div>
-                    <div class="step-item" id="step-news"><span class="step-dot"></span> 2. 마켓 뉴스 분석</div>
-                    <div class="step-item" id="step-youtube"><span class="step-dot"></span> 3. 유튜브 전문가 요약</div>
-                    <div class="step-item" id="step-recommending"><span class="step-dot"></span> 4. AI 추천 보고서 생성</div>
-                    <div class="step-item" id="step-uploading"><span class="step-dot"></span> 5. 구글 드라이브 업로드</div>
-                </div>
-
-                <!-- Step Caveats Display Panel -->
-                <div class="caveats-box" id="caveats-panel">
-                    <div class="caveats-title">
-                        <span class="glowing-dot"></span>
-                        <h4>실시간 단계별 분석 유의점</h4>
+                    <div class="steps-list">
+                        <div class="step-item" id="step-ingesting"><span class="step-dot"></span> 1. 금융 데이터 수집</div>
+                        <div class="step-item" id="step-news"><span class="step-dot"></span> 2. 마켓 뉴스 분석</div>
+                        <div class="step-item" id="step-youtube"><span class="step-dot"></span> 3. 유튜브 전문가 요약</div>
+                        <div class="step-item" id="step-recommending"><span class="step-dot"></span> 4. AI 추천 보고서 생성</div>
+                        <div class="step-item" id="step-uploading"><span class="step-dot"></span> 5. 구글 드라이브 업로드</div>
                     </div>
-                    <div class="caveats-content" id="caveats-text">
-                        자동 분석이 대기 중입니다. '지금 분석 시작하기' 버튼을 눌러 실시간 분석을 진행하십시오.
-                    </div>
-                </div>
-            </section>
 
+                    <!-- Step Caveats Display Panel -->
+                    <div class="caveats-box" id="caveats-panel">
+                        <div class="caveats-title">
+                            <span class="glowing-dot"></span>
+                            <h4>실시간 단계별 분석 유의점</h4>
+                        </div>
+                        <div class="caveats-content" id="caveats-text">
+                            자동 분석이 대기 중입니다. '지금 분석 시작하기' 버튼을 눌러 실시간 분석을 진행하십시오.
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Left Panel: Global Investment Opinions -->
+                <section class="glass-card opinions-panel">
+                    <div class="card-header">
+                        <h2>글로벌 자산군 투자 의견</h2>
+                        <span class="card-subtitle">이동평균선(MA) 추세 기반 기술적 판단</span>
+                    </div>
+                    <div class="opinions-table-container" style="margin-top: 15px; overflow-x: auto;">
+                        <table class="opinions-table" style="width: 100%; border-collapse: collapse; text-align: left;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">
+                                    <th style="padding: 10px 8px; font-weight: 600;">자산군</th>
+                                    <th style="padding: 10px 8px; font-weight: 600;">기준 인덱스</th>
+                                    <th style="padding: 10px 8px; font-weight: 600; text-align: right;">현재가</th>
+                                    <th style="padding: 10px 8px; font-weight: 600; text-align: center; width: 80px;">의견</th>
+                                    <th style="padding: 10px 8px; font-weight: 600; min-width: 150px;">판단 근거</th>
+                                </tr>
+                            </thead>
+                            <tbody id="opinions-table-body" style="font-size: 11.5px; color: var(--text-secondary);">
+                                <tr>
+                                    <td colspan="5" style="padding: 20px; text-align: center; color: var(--text-muted);">의견을 불러오는 중...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+            
             <!-- Right Panel: Visual Portfolio Analytics -->
             <section class="glass-card analytics-panel">
                 <div class="card-header">
@@ -121,6 +150,24 @@
                     <div class="macro-card">
                         <span class="macro-label">S&P 500</span>
                         <span class="macro-val" id="macro-sp500" style="color: #ffffff;">로딩 중...</span>
+                    </div>
+                    <div class="macro-card">
+                        <span class="macro-label">Fear & Greed Index</span>
+                        <div style="display: flex; align-items: baseline; gap: 6px;">
+                            <span class="macro-val" id="macro-fng-score" style="color: #ffffff;">-</span>
+                            <span id="macro-fng-rating" style="font-size: 9px; font-weight: bold; text-transform: uppercase; padding: 2px 5px; border-radius: 4px; background: rgba(255,255,255,0.06); color: #ffffff;">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Dynamic portfolio rules status banner -->
+                <div class="dynamic-rules-bar hidden" id="dynamic-rules-bar" style="margin-top: 15px; padding: 12px; border-radius: 8px; background: rgba(10, 15, 30, 0.6); border: 1px solid rgba(0, 242, 254, 0.2); display: none; flex-direction: column; gap: 8px;">
+                    <div style="font-size: 12px; font-weight: bold; color: var(--accent-cyan); display: flex; align-items: center; gap: 6px;">
+                        <span class="pulse-ring" style="position: static; display: inline-block; width: 8px; height: 8px; margin: 0; background: var(--accent-cyan); box-shadow: 0 0 8px var(--accent-cyan);"></span>
+                        동적 자산배분 규칙 (Dynamic Portfolio Rules)
+                    </div>
+                    <div id="dynamic-rules-triggers" style="font-size: 11px; color: var(--text-secondary); display: flex; flex-wrap: wrap; gap: 15px;">
+                        <!-- Triggers rendered by JS -->
                     </div>
                 </div>
 
@@ -146,25 +193,28 @@
                 <!-- Portfolio Summary Bar (Aggregates) -->
                 <div class="portfolio-summary-bar" id="portfolio-summary-bar"></div>
                 
-                <div class="holdings-table-container">
+                 <div class="holdings-table-container">
                     <table class="holdings-table" id="holdings-table">
                         <thead>
                             <tr>
-                                <th>티커</th>
-                                <th class="mobile-ellipsis">종목명</th>
-                                <th class="hide-on-mobile">보유량</th>
-                                <th>현재가</th>
-                                <th class="hide-on-mobile">매수평균가</th>
-                                <th class="hide-on-mobile">투자금액</th>
-                                <th class="hide-on-mobile">평가금액</th>
-                                <th>평가손익</th>
-                                <th>수익률</th>
-                                <th class="hide-on-mobile">투자 비중</th>
-                                <th>평가 비중</th>
+                                <th class="sortable" data-sort="account_type">구분 <span class="sort-icon">↕</span></th>
+                                <th class="sortable" data-sort="ticker">티커 <span class="sort-icon">↕</span></th>
+                                <th class="sortable mobile-ellipsis" data-sort="name">종목명 <span class="sort-icon">↕</span></th>
+                                <th class="sortable hide-on-mobile" data-sort="quantity">보유량 <span class="sort-icon">↕</span></th>
+                                <th class="sortable" data-sort="current_price">현재가 <span class="sort-icon">↕</span></th>
+                                <th class="sortable hide-on-mobile" data-sort="purchase_price">매수평균가 <span class="sort-icon">↕</span></th>
+                                <th class="sortable hide-on-mobile" data-sort="total_purchase">투자금액 <span class="sort-icon">↕</span></th>
+                                <th class="sortable hide-on-mobile" data-sort="total_evaluation">평가금액 <span class="sort-icon">↕</span></th>
+                                <th class="sortable" data-sort="profit">평가손익 <span class="sort-icon">↕</span></th>
+                                <th class="sortable" data-sort="roi">수익률 <span class="sort-icon">↕</span></th>
+                                <th class="sortable hide-on-mobile" data-sort="weight">투자 비중 <span class="sort-icon">↕</span></th>
+                                <th class="sortable" data-sort="eval_weight">평가 비중 <span class="sort-icon">↕</span></th>
+                                <th class="sortable" data-sort="trend_pct" style="width: 140px; text-align: center;">최근 20일 추이 <span class="sort-icon">↕</span></th>
                             </tr>
                         </thead>
                         <tbody id="holdings-list">
                             <tr class="skeleton-row">
+                                <td><span class="skeleton-placeholder" style="width: 45px;"></span></td>
                                 <td><span class="skeleton-placeholder" style="width: 50px;"></span></td>
                                 <td><span class="skeleton-placeholder" style="width: 120px;"></span></td>
                                 <td><span class="skeleton-placeholder" style="width: 40px;"></span></td>
@@ -176,8 +226,10 @@
                                 <td><span class="skeleton-placeholder" style="width: 50px;"></span></td>
                                 <td><span class="skeleton-placeholder" style="width: 40px;"></span></td>
                                 <td><span class="skeleton-placeholder" style="width: 40px;"></span></td>
+                                <td><span class="skeleton-placeholder" style="width: 124px; height: 34px; display: inline-block;"></span></td>
                             </tr>
                             <tr class="skeleton-row">
+                                <td><span class="skeleton-placeholder" style="width: 45px;"></span></td>
                                 <td><span class="skeleton-placeholder" style="width: 60px;"></span></td>
                                 <td><span class="skeleton-placeholder" style="width: 100px;"></span></td>
                                 <td><span class="skeleton-placeholder" style="width: 40px;"></span></td>
@@ -189,6 +241,7 @@
                                 <td><span class="skeleton-placeholder" style="width: 50px;"></span></td>
                                 <td><span class="skeleton-placeholder" style="width: 40px;"></span></td>
                                 <td><span class="skeleton-placeholder" style="width: 40px;"></span></td>
+                                <td><span class="skeleton-placeholder" style="width: 124px; height: 34px; display: inline-block;"></span></td>
                             </tr>
                         </tbody>
                     </table>
@@ -305,6 +358,22 @@
             </div>
         </div>
 
+        <!-- Modal: Ticker Trend Chart -->
+        <div class="modal-overlay" id="chart-modal">
+            <div class="modal-container large">
+                <div class="modal-header">
+                    <h3 id="modal-title">Ticker Chart</h3>
+                    <button class="btn-close" id="btn-close-chart">X</button>
+                </div>
+                <div class="modal-body" style="padding: 25px;">
+                    <div id="modal-loading" style="display: none; text-align: center; padding: 40px; color: var(--text-secondary); width: 100%;">
+                        야후 파이낸스 실시간 데이터 수집 중... <span class="pulse-ring" style="display: inline-block; margin-left: 10px;"></span>
+                    </div>
+                    <canvas id="detailChart" width="800" height="400" style="width: 100%; max-height: 50vh; display: block;"></canvas>
+                </div>
+            </div>
+        </div>
+
         <!-- Inline User Guide Panel -->
         <section class="guide-panel">
             <div class="guide-header">
@@ -341,7 +410,7 @@
             <p>© 2026 Antigravity Quant Team. All Rights Reserved. Built with FastAPI & Vanilla JS.</p>
         </footer>
     </div>
-    <script src="/app.js?v=3.0"></script>
+    <script src="/app.js?v=3.5"></script>
     <script>
         fetch('/api/version')
             .then(response => response.json())

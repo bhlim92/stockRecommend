@@ -148,7 +148,7 @@ def test_s1_trend_bullish(mock_yf_ticker):
     
     assert "TEST" in results
     details = results["TEST"]["entry_details"]
-    assert "5/20/200일선 정배열 (우상향)" in details
+    assert "현재가 > 5/20/200일선 정배열 (우상향)" in details
 
 @patch("app.scoring.yf.Ticker")
 def test_s1_trend_bearish(mock_yf_ticker):
@@ -166,7 +166,7 @@ def test_s1_trend_bearish(mock_yf_ticker):
     
     assert "TEST" in results
     details = results["TEST"]["entry_details"]
-    assert "5/20/200일선 역배열 (우하향)" in details
+    assert "현재가 < 5/20/200일선 역배열 (우하향)" in details
 
 @patch("app.scoring.yf.Ticker")
 def test_s1_trend_flat(mock_yf_ticker):
@@ -420,7 +420,7 @@ def test_final_weighted_score_mapping_maximum(mock_yf_ticker):
     
     # We can check that the detail comments match the scores
     details = results["TEST"]["entry_details"]
-    assert "5/20/200일선 정배열 (우상향)" in details
+    assert "현재가 > 5/20/200일선 정배열 (우상향)" in details
     assert "상승장 RSI 눌림목 조정 완료" in details
     assert "거래량 수반 돌파 양봉 감지" in details
 

@@ -227,7 +227,7 @@ def create_deck():
     draw_node(slide3, Inches(9.7), Inches(5.1), Inches(2.4), Inches(1.1), "데이터베이스 (RDBMS)", "완료 시점에 MariaDB/PostgreSQL에 최종 분석 결과 백업 저장", PURPLE)
 
     # Save presentation
-    output_dir = r"c:\Users\samsung\proj\stockRecommnad\design"
+    output_dir = r"c:\Users\samsung\proj\stockRecommend\design"
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, "system_architecture.pptx")
     prs.save(output_path)

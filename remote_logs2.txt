@@ -1,0 +1,20 @@
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:     return import_from_string(self.app)
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:   File "/root/stockRecommnad/venv/lib/python3.10/site-packages/uvicorn/importer.py", line 19, in import_from_string
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:     module = importlib.import_module(module_str)
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:   File "/usr/lib/python3.10/importlib/__init__.py", line 126, in import_module
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:     return _bootstrap._gcd_import(name[level:], package, level)
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:   File "<frozen importlib._bootstrap>", line 1050, in _gcd_import
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:   File "<frozen importlib._bootstrap>", line 1027, in _find_and_load
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:   File "<frozen importlib._bootstrap>", line 1006, in _find_and_load_unlocked
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:   File "<frozen importlib._bootstrap>", line 688, in _load_unlocked
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:   File "<frozen importlib._bootstrap_external>", line 883, in exec_module
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:   File "<frozen importlib._bootstrap>", line 241, in _call_with_frames_removed
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:   File "/root/stockRecommnad/app/web_server.py", line 19, in <module>
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:     from app.config import AppConfig
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:   File "/root/stockRecommnad/app/config.py", line 166
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:     "@강환?: "UCSWPuzlD337Y6VBkyFPwT8g"
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]:                                     ^
+Jun 07 15:44:29 bhlim123.cafe24.com python[146766]: SyntaxError: unterminated string literal (detected at line 166)
+Jun 07 15:44:30 bhlim123.cafe24.com systemd[1]: stock-recommnad.service: Main process exited, code=exited, status=1/FAILURE
+Jun 07 15:44:30 bhlim123.cafe24.com systemd[1]: stock-recommnad.service: Failed with result 'exit-code'.
+Jun 07 15:44:30 bhlim123.cafe24.com systemd[1]: stock-recommnad.service: Consumed 1.414s CPU time.

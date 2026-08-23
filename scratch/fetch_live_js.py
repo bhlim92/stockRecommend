@@ -1,7 +1,7 @@
 import requests
 
 def test_js():
-    url = "https://stock-recommnad.vercel.app/app.js?v=2.2"
+    url = "https://stockrecommend.vercel.app/app.js?v=2.2"
     print(f"Fetching {url}...")
     resp = requests.get(url, timeout=10)
     print("Status code:", resp.status_code)

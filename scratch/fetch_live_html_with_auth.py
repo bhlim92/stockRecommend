@@ -21,7 +21,7 @@ def test_html_auth():
     token = generate_session_token(AUTHORIZED_EMAIL)
     cookies = {"auth_token": token}
     
-    url = "https://stock-recommnad.vercel.app/"
+    url = "https://stockrecommend.vercel.app/"
     print(f"Fetching {url} with auth cookie...")
     resp = requests.get(url, cookies=cookies, timeout=10)
     print("Status code:", resp.status_code)

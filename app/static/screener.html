@@ -304,6 +304,23 @@
             display: inline-block;
         }
     </style>
+
+        <style>
+        /* 20일 상승률 뼱지 */
+        .trend-pct-badge {
+            display: inline-block;
+            padding: 2px 7px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            font-family: 'Roboto Mono', monospace;
+            letter-spacing: 0.02em;
+            margin-top: 4px;
+        }
+        .trend-pct-up   { background: rgba(16,185,129,0.15); color: #10b981; border: 1px solid rgba(16,185,129,0.3); }
+        .trend-pct-down { background: rgba(239,68,68,0.13);  color: #f87171; border: 1px solid rgba(239,68,68,0.3);  }
+        .trend-pct-flat { background: rgba(148,163,184,0.12); color: #94a3b8; border: 1px solid rgba(148,163,184,0.25); }
+        </style>
 </head>
 <body>
     <div class="screener-container">
@@ -454,10 +471,12 @@
                         <th class="hide-on-mobile" style="width: 50px;">순위</th>
                         <th style="width: 90px;">티커</th>
                         <th class="mobile-ellipsis">종목명</th>
-                        <th class="sortable hide-on-mobile" data-col="entry_score" style="width: 130px;">진입 점수 <span id="sort-entry-indicator"></span></th>
-                        <th class="sortable hide-on-mobile" data-col="eval_score" style="width: 130px;">평가 점수 <span id="sort-eval-indicator"></span></th>
-                        <th class="sortable" data-col="total_score" style="width: 120px;">종합 점수 <span id="sort-total-indicator"></span></th>
-                        <th style="width: 150px; text-align: center;">최근 20일 추이</th>
+                        <th class="hide-on-mobile sortable" data-col="sector" style="width: 110px;">섹터 <span id="sort-sector-indicator"></span></th>
+                        <th class="hide-on-mobile sortable" data-col="analyst_rating" style="width: 110px;">추천의견 <span id="sort-analyst_rating-indicator"></span></th>
+                        <th class="sortable hide-on-mobile" data-col="entry_score" style="width: 130px;">진입 점수 <span id="sort-entry_score-indicator"></span></th>
+                        <th class="sortable hide-on-mobile" data-col="eval_score" style="width: 130px;">평가 점수 <span id="sort-eval_score-indicator"></span></th>
+                        <th class="sortable" data-col="total_score" style="width: 120px;">종합 점수 <span id="sort-total_score-indicator"></span></th>
+                        <th class="hide-on-mobile sortable" data-col="trend_pct" style="width: 160px; text-align: center;">최근 20일 추이 <span id="sort-trend_pct-indicator"></span></th>
                         <th class="hide-on-mobile" style="width: 180px; text-align: center;">분석 일시</th>
                         <th>핵심 분석 근거</th>
                     </tr>
@@ -552,10 +571,8 @@
             });
 
             function updateSortHeadersUI() {
-                // Clear indicators
-                document.getElementById("sort-entry-indicator").innerHTML = "";
-                document.getElementById("sort-eval-indicator").innerHTML = "";
-                document.getElementById("sort-total-indicator").innerHTML = "";
+                // Clear all sortable indicators
+                document.querySelectorAll('th.sortable span[id^="sort-"]').forEach(el => el.innerHTML = "");
 
                 sortingStack.forEach(s => {
                     const icon = s.dir === "desc" ? "▼" : "▲";
@@ -563,7 +580,7 @@
                     const orderNum = s.priority === "primary" ? "1" : "2";
                     const html = `<span class="${badgeClass}">${icon} ${orderNum}</span>`;
                     
-                    const indicatorEl = document.getElementById(`sort-${s.col.split("_")[0]}-indicator`);
+                    const indicatorEl = document.getElementById(`sort-${s.col}-indicator`);
                     if (indicatorEl) {
                         indicatorEl.innerHTML = html;
                     }
@@ -761,7 +778,7 @@
                     if (!response.ok) throw new Error("최신 결과 조회 실패");
                     const data = await response.json();
                     if (data.results && data.results.length > 0) {
-                        allResults = data.results;
+                        allResults = computeTrendPct(data.results);
                         renderTable();
                         progressSection.classList.add("active");
                         progressBar.style.width = `100%`;
@@ -807,7 +824,7 @@
 
                 // 2. State syncing
                 if (status !== "idle" || results.length > 0) {
-                    allResults = results;
+                    allResults = computeTrendPct(results);
                     activeMarket = market || activeMarket;
                 }
 
@@ -860,6 +877,32 @@
                 btnStopScan.classList.add("hidden");
             }
 
+            // sparkline_prices 기반 20일 등락률 사전 계산 헬퍼
+            function computeTrendPct(results) {
+                results.forEach(item => {
+                    if (item.trend_pct !== undefined && item.trend_pct !== null) return;
+                    const prices = item.sparkline_prices;
+                    if (prices && prices.length >= 2) {
+                        const valid = prices.filter(p => p !== null && p !== undefined);
+                        if (valid.length >= 2) {
+                            item.trend_pct = (valid[valid.length - 1] - valid[0]) / valid[0] * 100;
+                            return;
+                        }
+                    }
+                    item.trend_pct = null;
+                });
+                return results;
+            }
+
+            // 추천의견 정렬 순서: 강력매수(0) → 매수(1) → 유지(2) → 매도(3) → 강력매도(4) → 없음(5)
+            const RATING_ORDER = {
+                '강력매수': 0,
+                '매수': 1,
+                '유지': 2,
+                '매도': 3,
+                '강력매도': 4,
+            };
+
             // Multi-level Nested Sort Function
             function sortResults(results) {
                 if (sortingStack.length === 0) return results;
@@ -867,29 +910,38 @@
                 const primary = sortingStack.find(s => s.priority === "primary");
                 const secondary = sortingStack.find(s => s.priority === "secondary");
 
+                function compareValues(a, b, col, dir) {
+                    let valA = a[col];
+                    let valB = b[col];
+
+                    // 추천의견: 의미 순서 정렬
+                    if (col === 'analyst_rating') {
+                        const orderA = RATING_ORDER[valA] !== undefined ? RATING_ORDER[valA] : 5;
+                        const orderB = RATING_ORDER[valB] !== undefined ? RATING_ORDER[valB] : 5;
+                        return dir === 'desc' ? orderA - orderB : orderB - orderA;
+                    }
+
+                    // 문자열 콼럼 (섹터 등): 알파벳 순 
+                    if (typeof valA === 'string' || typeof valB === 'string') {
+                        const strA = (valA || '').toLowerCase();
+                        const strB = (valB || '').toLowerCase();
+                        if (strA < strB) return dir === 'asc' ? -1 : 1;
+                        if (strA > strB) return dir === 'asc' ? 1 : -1;
+                        return 0;
+                    }
+
+                    // 숫자 콼럼
+                    const numA = valA !== null && valA !== undefined ? valA : (dir === 'desc' ? -Infinity : Infinity);
+                    const numB = valB !== null && valB !== undefined ? valB : (dir === 'desc' ? -Infinity : Infinity);
+                    return dir === 'desc' ? numB - numA : numA - numB;
+                }
+
                 return [...results].sort((a, b) => {
-                    // Compare primary column
-                    let primaryValA = a[primary.col];
-                    let primaryValB = b[primary.col];
-
-                    let diff = primaryValA - primaryValB;
-                    if (primary.dir === "desc") {
-                        diff = primaryValB - primaryValA;
-                    }
-
+                    const diff = compareValues(a, b, primary.col, primary.dir);
                     if (diff !== 0) return diff;
-
-                    // If primary values are equal, sort by secondary column
                     if (secondary) {
-                        let secondaryValA = a[secondary.col];
-                        let secondaryValB = b[secondary.col];
-                        let secDiff = secondaryValA - secondaryValB;
-                        if (secondary.dir === "desc") {
-                            secDiff = secondaryValB - secondaryValA;
-                        }
-                        return secDiff;
+                        return compareValues(a, b, secondary.col, secondary.dir);
                     }
-
                     return 0;
                 });
             }
@@ -972,7 +1024,8 @@
                 // 1. Filter
                 let filtered = allResults.filter(item => {
                     return item.symbol.toLowerCase().includes(searchVal) || 
-                           item.name.toLowerCase().includes(searchVal);
+                           item.name.toLowerCase().includes(searchVal) ||
+                           (item.sector && item.sector.toLowerCase().includes(searchVal));
                 });
 
                 // 2. Sort & Filter based on execution status
@@ -1017,14 +1070,34 @@
                     return;
                 }
 
+                // 추천의견 뱃지 생성 헬퍼
+                function getRatingBadge(raw, label) {
+                    if (!raw && !label) return '<span class="rating-badge rating-na">N/A</span>';
+                    const cls = {
+                        'strong_buy': 'rating-strong-buy',
+                        'buy': 'rating-buy',
+                        'hold': 'rating-hold',
+                        'underperform': 'rating-sell',
+                        'sell': 'rating-sell',
+                        'strong_sell': 'rating-strong-sell'
+                    }[raw] || 'rating-hold';
+                    const text = label || raw || 'N/A';
+                    return `<span class="rating-badge ${cls}">${text}</span>`;
+                }
+
+                // 섹터 태그 생성 헬퍼
+                function getSectorTag(sector) {
+                    if (!sector) return '<span style="color:#4a5568; font-size:0.75rem;">-</span>';
+                    const short = sector.length > 14 ? sector.slice(0, 13) + '\u2026' : sector;
+                    return `<span class="sector-tag" title="${sector}">${short}</span>`;
+                }
+
                 tableBody.innerHTML = "";
                 sorted.forEach((item, idx) => {
                     const tr = document.createElement("tr");
 
-                    // Check if analyzed (total_score is not null/undefined)
                     const isAnalyzed = item.total_score !== null && item.total_score !== undefined;
 
-                    // Formatting score colors
                     function getScoreClass(s) {
                         if (s >= 80) return "score-val high";
                         if (s >= 50) return "score-val medium";
@@ -1039,37 +1112,65 @@
                         entryHTML = `<span class="${entryClass}">${item.entry_score}</span><span style="color:#718096; font-size:0.75rem;">/100</span>`;
                         evalHTML = `<span class="${evalClass}">${item.eval_score}</span><span style="color:#718096; font-size:0.75rem;">/100</span>`;
                         totalHTML = `<span class="total-score-val">${item.total_score}</span>`;
-                        
+
+                        // 20일 등락률 계산 및 뼱지 생성
+                        let trendPctBadge = '';
+                        const prices = item.sparkline_prices;
+                        if (prices && prices.length >= 2) {
+                            const validPrices = prices.filter(p => p !== null && p !== undefined);
+                            if (validPrices.length >= 2) {
+                                const first = validPrices[0];
+                                const last = validPrices[validPrices.length - 1];
+                                const pct = ((last - first) / first * 100);
+                                // trend_pct를 item에 캐시 (정렬용)
+                                item.trend_pct = pct;
+                                const sign = pct >= 0 ? '+' : '';
+                                const cls = pct > 0.5 ? 'trend-pct-up' : pct < -0.5 ? 'trend-pct-down' : 'trend-pct-flat';
+                                const arrow = pct > 0.5 ? '▲' : pct < -0.5 ? '▼' : '—';
+                                trendPctBadge = `<div class="trend-pct-badge ${cls}">${arrow} ${sign}${pct.toFixed(2)}%</div>`;
+                            }
+                        } else {
+                            item.trend_pct = null;
+                        }
+
                         if (item.sparkline_prices && item.sparkline_prices.length > 0) {
                             const svg = generateSparklineSVG(item.sparkline_prices, item.sparkline_volumes);
-                            trendButtonHTML = `<div class="sparkline-container" data-ticker="${item.symbol}" title="상세 차트 보기" style="cursor: pointer;">${svg}</div>`;
+                            trendButtonHTML = `<div style="display:flex; flex-direction:column; align-items:center; gap:2px;">
+                                <div class="sparkline-container" data-ticker="${item.symbol}" title="\uc0c1\uc138 \ucc28\ud2b8 \ubcf4\uae30" style="cursor: pointer;">${svg}</div>
+                                ${trendPctBadge}
+                            </div>`;
                         } else {
                             trendButtonHTML = `<button class="trend-btn" data-ticker="${item.symbol}">Trend</button>`;
                         }
-                        
+
                         createdHTML = `<span style="font-family: 'Roboto Mono', monospace; font-size: 0.85rem; color: #cbd5e1;">${item.created_at || '-'}</span>`;
                         rationaleHTML = `<span style="color: #e2e8f0;">${item.rationale}</span>`;
                     } else {
-                        // Pending / Processing state UI placeholders
                         entryHTML = `<span style="color: #4a5568; font-family: 'Orbitron'; font-weight:700;">-</span>`;
                         evalHTML = `<span style="color: #4a5568; font-family: 'Orbitron'; font-weight:700;">-</span>`;
                         totalHTML = `<span style="color: #4a5568; font-weight:900; font-size:0.95rem;">-</span>`;
-                        trendButtonHTML = `<span style="color: #4a5568; font-size:0.85rem;">대기</span>`;
+                        trendButtonHTML = `<span style="color: #4a5568; font-size:0.85rem;">\ub300\uae30</span>`;
                         createdHTML = `<span style="font-family: 'Roboto Mono', monospace; font-size: 0.85rem; color: #4a5568;">${item.created_at || '-'}</span>`;
-                        
                         let textStyle = "color: #718096; opacity: 0.6; font-style: italic;";
-                        if (item.rationale && item.rationale.includes("제외")) {
+                        if (item.rationale && item.rationale.includes("\uc81c\uc678")) {
                             textStyle = "color: var(--accent-red); opacity: 0.7;";
-                        } else if (item.rationale && item.rationale.includes("오류")) {
+                        } else if (item.rationale && item.rationale.includes("\uc624\ub958")) {
                             textStyle = "color: #f59e0b; opacity: 0.8;";
                         }
                         rationaleHTML = `<span style="${textStyle}">${item.rationale}</span>`;
                     }
 
+                    const sectorHTML = getSectorTag(item.sector);
+                    const ratingHTML = isAnalyzed
+                        ? getRatingBadge(item.analyst_rating_raw, item.analyst_rating)
+                        : '<span style="color:#4a5568; font-size:0.75rem;">-</span>';
+
                     tr.innerHTML = `
                         <td class="hide-on-mobile" style="font-family: 'Orbitron', monospace; font-weight: 700; color: var(--accent-cyan); text-align: center;">${idx + 1}</td>
                         <td class="ticker-cell" style="font-weight: 700;">${item.symbol.toUpperCase()}</td>
                         <td class="mobile-ellipsis" style="font-weight: 600;">${item.name}</td>
+                        <td class="hide-on-mobile" style="text-align: center;">${sectorHTML}</td>
+                        <td class="hide-on-mobile" style="text-align: center;">${ratingHTML}</td>
                         <td class="number-cell hide-on-mobile">${entryHTML}</td>
                         <td class="number-cell hide-on-mobile">${evalHTML}</td>
                         <td class="number-cell" style="text-align: center;">${totalHTML}</td>
@@ -1081,7 +1182,6 @@
                         <td class="hide-on-mobile" style="text-align: center;">${createdHTML}</td>
                         <td style="font-size: 0.85rem; line-height: 1.4; font-family: 'Inter', sans-serif;">${rationaleHTML}</td>
                     `;
-                    
                     tableBody.appendChild(tr);
                 });
             }
@@ -1178,7 +1278,6 @@
                             data: data.ma5,
                             borderColor: '#00ff66',
                             borderWidth: 1.5,
-                            borderDash: [5, 5],
                             pointRadius: 0,
                             tension: 0.1,
                             yAxisID: 'y'
@@ -1186,7 +1285,7 @@
                         {
                             label: '20일선 (MA20)',
                             data: data.ma20,
-                            borderColor: '#f59e0b',
+                            borderColor: '#ff00ff',
                             borderWidth: 1.5,
                             pointRadius: 0,
                             tension: 0.1,
@@ -1195,8 +1294,8 @@
                         {
                             label: '200일선 (MA200)',
                             data: data.ma200,
-                            borderColor: '#ff0055',
-                            borderWidth: 2,
+                            borderColor: '#ff9900',
+                            borderWidth: 1.5,
                             pointRadius: 0,
                             tension: 0.1,
                             yAxisID: 'y'
@@ -1205,7 +1304,9 @@
                             type: 'bar',
                             label: '거래량 (Volume)',
                             data: data.volumes,
-                            backgroundColor: 'rgba(154, 162, 177, 0.3)',
+                            backgroundColor: 'rgba(139, 92, 246, 0.3)',
+                            borderColor: 'rgba(139, 92, 246, 0.7)',
+                            borderWidth: 1,
                             yAxisID: 'y1'
                         }
                     ]
@@ -1234,9 +1335,17 @@
                             display: true,
                             position: 'right',
                             grid: { drawOnChartArea: false },
-                            ticks: { display: false },
                             min: 0,
-                            suggestedMax: Math.max(...data.volumes) * 3 // Keep volume bars at the bottom third
+                            suggestedMax: data.volumes && data.volumes.length ? Math.max(...data.volumes) * 3 : undefined,
+                            ticks: {
+                                color: '#a78bfa',
+                                font: { family: 'Roboto Mono', size: 10 },
+                                callback: function(value) {
+                                    if (value >= 1e6) return (value / 1e6).toFixed(1) + 'M';
+                                    if (value >= 1e3) return (value / 1e3).toFixed(1) + 'K';
+                                    return value;
+                                }
+                            }
                         }
                     },
                     plugins: {

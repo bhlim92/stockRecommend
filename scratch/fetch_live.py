@@ -1,7 +1,7 @@
 import requests
 
 def fetch_live():
-    url = "https://stock-recommnad.vercel.app/api/portfolio/gspread"
+    url = "https://stockrecommend.vercel.app/api/portfolio/gspread"
     print(f"Requesting {url}...")
     try:
         resp = requests.get(url, timeout=10)

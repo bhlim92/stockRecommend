@@ -1,7 +1,7 @@
 import os
 
 artifact_dir = r"C:\Users\samsung\.gemini\antigravity\brain\ec205238-3056-44ac-a8bf-ba319f497385"
-workspace_dir = r"c:\Users\samsung\proj\stockRecommnad"
+workspace_dir = r"c:\Users\samsung\proj\stockRecommend"
 
 test_paths = [
     "/stock_screener_mockup_1780444926617.png",

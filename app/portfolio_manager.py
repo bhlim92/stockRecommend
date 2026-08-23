@@ -28,11 +28,15 @@ class RebalanceTransaction(TypedDict):
     action: Literal["BUY", "SELL", "HOLD"]
     suggested_qty_delta: float
 
-class PortfolioEvaluation(TypedDict):
+class PortfolioEvaluation(TypedDict, total=False):
     total_value: float
     holdings_eval: list[HoldingEvaluation]
     rebalance_actions: list[RebalanceTransaction]
     rebalance_triggered: bool
+    adjusted_target_allocation: Optional[Dict[str, float]]
+    triggered_rules: Optional[List[str]]
+    yield_30y: Optional[float]
+    vix: Optional[float]
 
 class PortfolioManager:
     """
@@ -69,6 +73,13 @@ class PortfolioManager:
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON format in portfolio file: {str(e)}")
             raise ValueError(f"Portfolio file is not a valid JSON: {str(e)}")
+
+        # Automatically migrate/initialize missing target allocation classes to 0.0
+        if isinstance(data.get("target_allocation"), dict):
+            for c in ["stock", "bond", "gold", "commodity", "cash"]:
+                if c not in data["target_allocation"]:
+                    logger.info(f"Auto-migrating portfolio: adding missing target class '{c}' with weight 0.0")
+                    data["target_allocation"][c] = 0.0
 
         self.validate_portfolio(data)
         return data
@@ -112,7 +123,7 @@ class PortfolioManager:
                 if field not in holding:
                     raise ValueError(f"Holding item {idx} is missing required property '{field}'")
             
-            if holding["asset_class"] not in ["stock", "bond", "commodity", "cash"]:
+            if holding["asset_class"] not in ["stock", "bond", "gold", "commodity", "cash"]:
                 raise ValueError(f"Holding item {idx} has invalid asset_class: '{holding['asset_class']}'")
             if holding["quantity"] < 0:
                 raise ValueError(f"Holding item {idx} has negative quantity: {holding['quantity']}")
@@ -121,7 +132,7 @@ class PortfolioManager:
 
         # 4. Target Allocation weights check (must sum to 1.0)
         allocation = data["target_allocation"]
-        required_classes = ["stock", "bond", "commodity", "cash"]
+        required_classes = ["stock", "bond", "gold", "commodity", "cash"]
         for c in required_classes:
             if c not in allocation:
                 raise ValueError(f"target_allocation is missing target weight for class: '{c}'")
@@ -140,10 +151,68 @@ class PortfolioManager:
             return "KRW"
         return "USD"
 
+    def evaluate_dynamic_rules(
+        self, 
+        target_allocation: Dict[str, float], 
+        yield_30y: Optional[float], 
+        vix: Optional[float]
+    ) -> Dict[str, Any]:
+        """
+        Evaluates dynamic investment rules based on macro signals.
+        - Rule 1: US 30Y Bond Yield >= 5.0% -> Buy Long-Term Bond (Target Weight +5%, reduced from Cash)
+        - Rule 2: VIX >= 20 -> Reduce Tech Sector Leverage (Stock weight -10%) & Increase Cash (+10%)
+        """
+        adjusted = target_allocation.copy()
+        triggered = []
+        
+        # Rule 1
+        if yield_30y is not None and yield_30y >= 5.0:
+            triggered.append(f"US 30Y Bond Yield >= 5.0% (Current: {yield_30y:.2f}%): Bond Target Weight +5%")
+            adjusted["bond"] = adjusted.get("bond", 0.0) + 0.05
+            cash_w = adjusted.get("cash", 0.0)
+            if cash_w >= 0.05:
+                adjusted["cash"] = cash_w - 0.05
+            else:
+                adjusted["cash"] = 0.0
+                adjusted["stock"] = max(0.0, adjusted.get("stock", 0.0) - (0.05 - cash_w))
+                
+        # Rule 2
+        if vix is not None and vix >= 20.0:
+            triggered.append(f"VIX >= 20 (Current: {vix:.2f}): Reduce Stock Weight -10%, Increase Cash Weight +10%")
+            stock_w = adjusted.get("stock", 0.0)
+            if stock_w >= 0.10:
+                adjusted["stock"] = stock_w - 0.10
+                adjusted["cash"] = adjusted.get("cash", 0.0) + 0.10
+            else:
+                adjusted["stock"] = 0.0
+                adjusted["cash"] = adjusted.get("cash", 0.0) + stock_w
+                
+        # Sanitize and normalize weights to guarantee sum is exactly 1.0 and bounds [0, 1]
+        for key in adjusted:
+            adjusted[key] = max(0.0, min(1.0, adjusted[key]))
+            
+        total_sum = sum(adjusted.values())
+        if total_sum > 0:
+            for key in adjusted:
+                adjusted[key] = round(adjusted[key] / total_sum, 4)
+                
+        # Handle small rounding errors to sum exactly to 1.0
+        diff = round(1.0 - sum(adjusted.values()), 4)
+        if diff != 0:
+            largest_key = max(adjusted, key=adjusted.get)
+            adjusted[largest_key] = round(adjusted[largest_key] + diff, 4)
+            
+        return {
+            "adjusted_allocation": adjusted,
+            "triggered_rules": triggered
+        }
+
     def evaluate_and_rebalance(
         self, 
         current_prices: Dict[str, float], 
-        recommended_stocks: Optional[List[str]] = None
+        recommended_stocks: Optional[List[str]] = None,
+        yield_30y: Optional[float] = None,
+        vix: Optional[float] = None
     ) -> PortfolioEvaluation:
         """
         Calculates current portfolio weights, compares them against target weights,
@@ -152,6 +221,8 @@ class PortfolioManager:
         Args:
             current_prices: Real-time price dictionary for active symbols.
             recommended_stocks: Optional list of tickers recommended for purchase.
+            yield_30y: Optional US 30Y Treasury Yield value.
+            vix: Optional CBOE Volatility Index value.
             
         Returns:
             Aggregated PortfolioEvaluation details.
@@ -159,6 +230,12 @@ class PortfolioManager:
         portfolio = self.load_portfolio()
         base_currency = portfolio.get("base_currency", "KRW")
         cash_base = float(portfolio["cash"])
+        
+        # Extract yield_30y and vix if not explicitly passed
+        if yield_30y is None:
+            yield_30y = current_prices.get("US30Y") or current_prices.get("^TYX")
+        if vix is None:
+            vix = current_prices.get("VIX") or current_prices.get("^VIX")
         
         # Determine exchange rate USD/KRW
         er = current_prices.get("USDKRW=X") or current_prices.get("USD_KRW") or current_prices.get("KRW=X") or 1350.0
@@ -215,18 +292,20 @@ class PortfolioManager:
         logger.info(f"Total Portfolio Value: {total_portfolio_value:.2f} {base_currency}")
 
         # Step 2: Compute actual weights
-        class_values = {"stock": 0.0, "bond": 0.0, "commodity": 0.0, "cash": cash_base}
+        class_values = {"stock": 0.0, "bond": 0.0, "gold": 0.0, "commodity": 0.0, "cash": cash_base}
         for h_eval in holdings_eval:
             h_eval["actual_weight"] = h_eval["current_value"] / total_portfolio_value if total_portfolio_value > 0 else 0.0
             class_values[h_eval["asset_class"]] += h_eval["current_value"]
 
-        # Step 3: Check drift and trigger rebalancing
-        target_allocation = portfolio["target_allocation"]
+        # Step 3: Evaluate dynamic rules and check drift
+        rules_eval = self.evaluate_dynamic_rules(portfolio["target_allocation"], yield_30y, vix)
+        target_allocation = rules_eval["adjusted_allocation"]
+        triggered_rules = rules_eval["triggered_rules"]
         drift_detected = False
         rebalance_trigger_threshold = 0.05
 
         class_deviations = {}
-        for c in ["stock", "bond", "commodity", "cash"]:
+        for c in ["stock", "bond", "gold", "commodity", "cash"]:
             actual_w = class_values[c] / total_portfolio_value if total_portfolio_value > 0 else 0.0
             target_w = float(target_allocation[c])
             deviation = actual_w - target_w
@@ -241,7 +320,7 @@ class PortfolioManager:
         if drift_detected:
             # Phase A: Overweighted Classes (Sell)
             sell_actions: List[Dict[str, Any]] = []
-            for c in ["stock", "bond", "commodity"]:
+            for c in ["stock", "bond", "gold", "commodity"]:
                 deviation = class_deviations[c]
                 if deviation > 0: # Overweighted
                     class_value = class_values[c]
@@ -281,7 +360,7 @@ class PortfolioManager:
 
             # Phase B: Underweighted Classes (Buy)
             buy_actions: List[Dict[str, Any]] = []
-            for c in ["stock", "bond", "commodity"]:
+            for c in ["stock", "bond", "gold", "commodity"]:
                 deviation = class_deviations[c]
                 if deviation < 0: # Underweighted
                     deficit_value_base = abs(deviation) * total_portfolio_value
@@ -300,10 +379,14 @@ class PortfolioManager:
                         # If no holdings, use default bond ETF
                         if not target_symbols:
                             target_symbols = ["TLT"]
+                    elif c == "gold":
+                        target_symbols = [h["symbol"] for h in holdings_eval if h["asset_class"] == "gold"]
+                        if not target_symbols:
+                            target_symbols = ["GLD"]
                     elif c == "commodity":
                         target_symbols = [h["symbol"] for h in holdings_eval if h["asset_class"] == "commodity"]
                         if not target_symbols:
-                            target_symbols = ["GLD"]
+                            target_symbols = ["DBC"]
 
                     if target_symbols:
                         # Split cash equally among target instruments
@@ -370,5 +453,9 @@ class PortfolioManager:
             "total_value": total_portfolio_value,
             "holdings_eval": holdings_eval,
             "rebalance_actions": transactions,
-            "rebalance_triggered": drift_detected
+            "rebalance_triggered": drift_detected,
+            "adjusted_target_allocation": target_allocation,
+            "triggered_rules": triggered_rules,
+            "yield_30y": yield_30y,
+            "vix": vix
         }

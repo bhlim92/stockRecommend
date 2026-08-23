@@ -276,6 +276,10 @@ class ScreenerManager:
                         "eval_score": None,
                         "total_score": None,
                         "rationale": "분석 대기 중...",
+                        "sector": None,
+                        "analyst_rating": None,
+                        "analyst_rating_raw": None,
+                        "analyst_count": None,
                         "created_at": scan_start_time_str,
                     }
                     for item in tickers_info
@@ -389,6 +393,7 @@ class ScreenerManager:
                         res = score_res[ticker]
                         rationale = self._generate_rationale(ticker, res)
                         import pandas as pd
+                        from app.utils.naver_finance import enrich_with_krx_sector
                         df_ticker = preloaded_prices.get(ticker) if preloaded_prices is not None else None
                         sparkline_prices = []
                         sparkline_volumes = []
@@ -396,7 +401,14 @@ class ScreenerManager:
                             sparkline_df = df_ticker.tail(20)
                             sparkline_prices = [None if pd.isna(x) else x for x in sparkline_df['Close'].tolist()]
                             sparkline_volumes = [None if pd.isna(x) else x for x in sparkline_df['Volume'].tolist()]
-                        
+
+                        # 섹터/업종: yfinance 결과 우선, 한국 주식은 KRX로 보완
+                        sector_info = enrich_with_krx_sector(
+                            ticker,
+                            res.get("sector"),
+                            res.get("industry")
+                        )
+
                         return ticker, {
                             "current_price": res.get("current_price", 0.0),
                             "entry_score": res.get("entry_score", 0),
@@ -405,7 +417,12 @@ class ScreenerManager:
                             "rationale": rationale,
                             "name": res.get("name", ticker),
                             "sparkline_prices": sparkline_prices,
-                            "sparkline_volumes": sparkline_volumes
+                            "sparkline_volumes": sparkline_volumes,
+                            "sector": sector_info.get("sector"),
+                            "industry": sector_info.get("industry"),
+                            "analyst_rating": res.get("analyst_rating"),
+                            "analyst_rating_raw": res.get("analyst_rating_raw"),
+                            "analyst_count": res.get("analyst_count"),
                         }, "success"
                 except Exception as e:
                     return ticker, None, f"error: {str(e)}"

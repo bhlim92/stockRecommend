@@ -18,7 +18,7 @@ def check_processes():
         "ps aux | grep -E 'python|uvicorn|fastapi|main|web_server'",
         "netstat -tulnp | grep -E 'python|uvicorn|8000|80'",
         "pm2 list || true",
-        "systemctl status stock-recommnad || systemctl status fastapi || true"
+        "systemctl status stock-recommend || systemctl status fastapi || true"
     ]
     
     for cmd in commands:

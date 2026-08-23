@@ -10,7 +10,7 @@ def test_load_and_validate_portfolio(mock_portfolio_json):
     
     assert data["cash"] == 10000000.0
     assert len(data["holdings"]) == 2
-    assert data["target_allocation"]["stock"] == 0.6
+    assert data["target_allocation"]["stock"] == 0.5
 
 def test_validate_portfolio_missing_fields(tmp_path):
     invalid_data = {
@@ -32,8 +32,9 @@ def test_validate_portfolio_weights_not_1(tmp_path):
         "cash": 1000.0,
         "holdings": [],
         "target_allocation": {
-            "stock": 0.5,
+            "stock": 0.4,
             "bond": 0.2,
+            "gold": 0.1,
             "commodity": 0.1,
             "cash": 0.1  # Sums to 0.9, not 1.0
         }
@@ -116,17 +117,18 @@ def test_evaluate_and_rebalance_perfect_balance(mock_portfolio_json, tmp_path):
                 "asset_class": "bond"
             },
             {
-                "symbol": "GLD", # Commodity: 1,000,000 KRW (10%)
+                "symbol": "GLD", # Gold: 1,000,000 KRW (10%)
                 "name": "Gold ETF",
                 "quantity": 10.0,
                 "purchase_price": 100000.0,
-                "asset_class": "commodity"
+                "asset_class": "gold"
             }
         ],
         "target_allocation": {
             "stock": 0.6,
             "bond": 0.2,
-            "commodity": 0.1,
+            "gold": 0.1,
+            "commodity": 0.0,
             "cash": 0.1
         }
     }
@@ -148,3 +150,64 @@ def test_evaluate_and_rebalance_perfect_balance(mock_portfolio_json, tmp_path):
     for action in res["rebalance_actions"]:
         assert action["action"] == "HOLD"
         assert action["suggested_qty_delta"] == 0.0
+
+def test_evaluate_dynamic_rules():
+    pm = PortfolioManager("dummy.json")
+    base_alloc = {
+        "stock": 0.6,
+        "bond": 0.2,
+        "commodity": 0.1,
+        "cash": 0.1
+    }
+    
+    # 1. No triggers
+    res = pm.evaluate_dynamic_rules(base_alloc, yield_30y=4.5, vix=15.0)
+    assert res["adjusted_allocation"] == base_alloc
+    assert len(res["triggered_rules"]) == 0
+    
+    # 2. Rule 1 triggers: Yield >= 5.0%
+    # Bond target +5% (0.2 -> 0.25). Cash decreased by 5% (0.1 -> 0.05).
+    res2 = pm.evaluate_dynamic_rules(base_alloc, yield_30y=5.2, vix=15.0)
+    assert res2["adjusted_allocation"]["bond"] == 0.25
+    assert res2["adjusted_allocation"]["cash"] == 0.05
+    assert res2["adjusted_allocation"]["stock"] == 0.6
+    assert len(res2["triggered_rules"]) == 1
+    
+    # 3. Rule 2 triggers: VIX >= 20
+    # Stock target -10% (0.6 -> 0.5). Cash target +10% (0.1 -> 0.2).
+    res3 = pm.evaluate_dynamic_rules(base_alloc, yield_30y=4.5, vix=22.0)
+    assert res3["adjusted_allocation"]["stock"] == 0.5
+    assert res3["adjusted_allocation"]["cash"] == 0.2
+    assert len(res3["triggered_rules"]) == 1
+    
+    # 4. Both trigger
+    res4 = pm.evaluate_dynamic_rules(base_alloc, yield_30y=5.0, vix=20.0)
+    assert res4["adjusted_allocation"]["bond"] == 0.25
+    assert res4["adjusted_allocation"]["cash"] == 0.15
+    assert res4["adjusted_allocation"]["stock"] == 0.50
+    assert res4["adjusted_allocation"]["commodity"] == 0.10
+    assert len(res4["triggered_rules"]) == 2
+
+
+def test_load_portfolio_auto_migration(tmp_path):
+    # Old layout missing "gold"
+    old_data = {
+        "cash": 1000.0,
+        "holdings": [],
+        "target_allocation": {
+            "stock": 0.5,
+            "bond": 0.2,
+            "commodity": 0.2,
+            "cash": 0.1
+        }
+    }
+    file_path = tmp_path / "old_portfolio.json"
+    with open(file_path, "w", encoding="utf-8") as f:
+        json.dump(old_data, f)
+        
+    pm = PortfolioManager(str(file_path))
+    loaded = pm.load_portfolio()
+    # Gold should be auto-initialized to 0.0, and validation should pass successfully
+    assert "gold" in loaded["target_allocation"]
+    assert loaded["target_allocation"]["gold"] == 0.0
+

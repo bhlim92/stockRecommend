@@ -2,11 +2,11 @@ import os
 import sys
 from dotenv import load_dotenv
 
-sys.path.append("c:\\Users\\samsung\\proj\\stockRecommnad")
+sys.path.append("c:\\Users\\samsung\\proj\\stockRecommend")
 from app.gdrive_uploader import GoogleDriveUploader
 
 def test_oauth_upload():
-    load_dotenv("c:\\Users\\samsung\\proj\\stockRecommnad\\.env")
+    load_dotenv("c:\\Users\\samsung\\proj\\stockRecommend\\.env")
     token_json = os.getenv("GOOGLE_DRIVE_TOKEN_JSON")
     folder_id = os.getenv("GOOGLE_DRIVE_FOLDER_ID")
     

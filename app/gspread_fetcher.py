@@ -50,13 +50,13 @@ def get_google_credentials():
 def fetch_portfolio_holdings():
     """
     Fetches the portfolio stock list from Google Spreadsheet,
-    filters row 2 to 115 for holdings > 0, and returns parsed data.
+    combining ordinary stock holdings from '매매일지' and pension holdings from '연금매매일지',
+    and returns combined parsed data.
     """
     spreadsheet_id = AppConfig.PORTFOLIO_SPREADSHEET_ID
-    gid = AppConfig.PORTFOLIO_SPREADSHEET_GID
     
-    if not spreadsheet_id or not gid:
-        logger.warning("Portfolio Spreadsheet ID or GID is not configured.")
+    if not spreadsheet_id:
+        logger.warning("Portfolio Spreadsheet ID is not configured.")
         return []
         
     try:
@@ -66,9 +66,9 @@ def fetch_portfolio_holdings():
             creds.refresh(Request())
             
         access_token = creds.token
-        url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=csv&gid={gid}"
+        url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/export?format=xlsx"
         
-        logger.info(f"Fetching spreadsheet from Google Drive export URL (GID: {gid})...")
+        logger.info("Fetching spreadsheet from Google Drive export URL (format: xlsx)...")
         headers = {"Authorization": f"Bearer {access_token}"}
         resp = requests.get(url, headers=headers, timeout=15)
         
@@ -76,71 +76,223 @@ def fetch_portfolio_holdings():
             logger.error(f"Failed to export spreadsheet. HTTP Status: {resp.status_code}, Response: {resp.text[:200]}")
             raise RuntimeError(f"Failed to fetch spreadsheet. Status code: {resp.status_code}")
             
-        resp.encoding = "utf-8"
-        csv_content = resp.text
-        
+        import pandas as pd
         import io
-        reader = csv.reader(io.StringIO(csv_content))
-        rows = list(reader)
         
-        if not rows:
-            logger.warning("Spreadsheet CSV content is empty.")
-            return []
-            
+        xlsx_file = io.BytesIO(resp.content)
+        xl = pd.ExcelFile(xlsx_file, engine='openpyxl')
+        
         holdings = []
-        # Parse rows 2 to 115 (1-based index 2 to 115 corresponds to list index 1 to 114)
-        # Note: rows index 0 is the header (Row 1).
-        end_idx = min(115, len(rows))
-        for r_idx in range(1, end_idx):
-            row = rows[r_idx]
-            if len(row) <= 3:
-                continue
-                
-            qty_str = row[1].strip()
-            ticker = row[2].strip()
-            name = row[3].strip()
-            
-            if not qty_str or not ticker:
-                continue
-                
-            # Filter holdings > 0
+        
+        def clean_float(val):
+            if pd.isna(val):
+                return 0.0
+            if isinstance(val, (int, float)):
+                return float(val)
             try:
-                qty = float(qty_str.replace(",", ""))
+                return float(str(val).replace(",", "").replace("$", "").strip())
             except ValueError:
-                qty = 0.0
+                return 0.0
+
+        # 1. Parse '매매일지' (Ordinary Stock)
+        if '매매일지' in xl.sheet_names:
+            df_stock = xl.parse('매매일지', header=None)
+            end_idx = min(115, len(df_stock))
+            for r_idx in range(1, end_idx):
+                row = df_stock.iloc[r_idx].tolist()
+                if len(row) <= 3:
+                    continue
+                    
+                qty_val = row[1]
+                ticker_val = row[2]
+                name_val = row[3]
                 
-            if qty <= 0:
-                continue
+                # Check if it is a cash asset with missing ticker
+                is_cash_asset = False
+                raw_type = str(row[5]).strip() if len(row) > 5 and not pd.isna(row[5]) else ""
+                name_str = str(name_val).strip() if not pd.isna(name_val) else ""
+                if "현금" in raw_type or "mmf" in raw_type or "mmf" in name_str.lower() or "현금" in name_str:
+                    is_cash_asset = True
                 
-            # Extract additional fields
-            def clean_float(val):
-                try:
-                    return float(val.replace(",", "").replace("$", "").strip())
-                except ValueError:
-                    return 0.0
-            
-            current_price = clean_float(row[7]) if len(row) > 7 else 0.0
-            purchase_price = clean_float(row[17]) if len(row) > 17 else 0.0
-            total_purchase = clean_float(row[18]) if len(row) > 18 else 0.0
-            total_evaluation = clean_float(row[19]) if len(row) > 19 else 0.0
-            profit = clean_float(row[20]) if len(row) > 20 else 0.0
-            roi = row[21].strip() if len(row) > 21 else "0.0%"
-            weight = row[23].strip() if len(row) > 23 else "0.0%"
-            
-            holdings.append({
-                "ticker": ticker,
-                "name": name,
-                "quantity": qty,
-                "current_price": current_price,
-                "purchase_price": purchase_price,
-                "total_purchase": total_purchase,
-                "total_evaluation": total_evaluation,
-                "profit": profit,
-                "roi": roi,
-                "weight": weight
-            })
-            
-        logger.info(f"Successfully loaded {len(holdings)} holdings from Google Spreadsheet.")
+                if pd.isna(qty_val):
+                    continue
+                    
+                if pd.isna(ticker_val):
+                    if is_cash_asset:
+                        ticker_val = "CASH"
+                    else:
+                        continue
+                    
+                qty_str = str(qty_val).strip()
+                ticker = str(ticker_val).strip()
+                name = name_str
+                
+                if not qty_str or not ticker:
+                    continue
+                    
+                qty = clean_float(qty_str)
+                if qty <= 0:
+                    continue
+                    
+                raw_type = str(row[5]).strip() if len(row) > 5 and not pd.isna(row[5]) else ""
+                # CASH 티커이면 항상 현금으로 분류 (금 조건보다 먼저 확인)
+                if ticker == "CASH" or "현금" in raw_type or "mmf" in raw_type.lower() or "mmf" in name.lower() or "현금" in name:
+                    asset_class = "cash"
+                    asset_type = "현금"
+                elif "주식" in raw_type:
+                    asset_class = "stock"
+                    asset_type = "주식"
+                elif "채권" in raw_type:
+                    asset_class = "bond"
+                    asset_type = "채권"
+                elif "금" in raw_type:
+                    asset_class = "gold"
+                    asset_type = "금"
+                elif "원자재" in raw_type:
+                    asset_class = "commodity"
+                    asset_type = "원자재"
+                else:
+                    asset_class = "stock"
+                    asset_type = "주식"
+                    
+                current_price = clean_float(row[8]) if len(row) > 8 else 0.0
+                purchase_price = clean_float(row[18]) if len(row) > 18 else 0.0
+                total_purchase = clean_float(row[19]) if len(row) > 19 else 0.0
+                total_evaluation = clean_float(row[20]) if len(row) > 20 else 0.0
+                profit = clean_float(row[21]) if len(row) > 21 else 0.0
+                
+                roi = "0.0%"
+                if len(row) > 22 and not pd.isna(row[22]):
+                    roi_val = row[22]
+                    if isinstance(roi_val, (int, float)):
+                        roi = f"{roi_val * 100:.2f}%"
+                    else:
+                        roi = str(roi_val).strip()
+                    
+                weight = "0.0%"
+                if len(row) > 24 and not pd.isna(row[24]):
+                    weight_val = row[24]
+                    if isinstance(weight_val, (int, float)):
+                        weight = f"{weight_val * 100:.2f}%"
+                    else:
+                        weight = str(weight_val).strip()
+                
+                holdings.append({
+                    "account_type": "일반주식",
+                    "ticker": ticker,
+                    "name": name,
+                    "quantity": qty,
+                    "current_price": current_price,
+                    "purchase_price": purchase_price,
+                    "total_purchase": total_purchase,
+                    "total_evaluation": total_evaluation,
+                    "profit": profit,
+                    "roi": roi,
+                    "weight": weight,
+                    "asset_class": asset_class,
+                    "asset_type": asset_type
+                })
+                
+        # 2. Parse '연금매매일지' (Pension)
+        if '연금매매일지' in xl.sheet_names:
+            df_pension = xl.parse('연금매매일지', header=None)
+            end_idx = min(115, len(df_pension))
+            for r_idx in range(1, end_idx):
+                row = df_pension.iloc[r_idx].tolist()
+                if len(row) <= 3:
+                    continue
+                    
+                qty_val = row[1]
+                ticker_val = row[2]
+                name_val = row[3]
+                
+                # Check if it is a cash asset with missing ticker
+                is_cash_asset = False
+                raw_type = str(row[5]).strip() if len(row) > 5 and not pd.isna(row[5]) else ""
+                name_str = str(name_val).strip() if not pd.isna(name_val) else ""
+                if "현금" in raw_type or "mmf" in raw_type or "mmf" in name_str.lower() or "현금" in name_str:
+                    is_cash_asset = True
+                
+                if pd.isna(qty_val):
+                    continue
+                    
+                if pd.isna(ticker_val):
+                    if is_cash_asset:
+                        ticker_val = "CASH"
+                    else:
+                        continue
+                    
+                qty_str = str(qty_val).strip()
+                ticker = str(ticker_val).strip()
+                name = name_str
+                
+                if not qty_str or not ticker:
+                    continue
+                    
+                qty = clean_float(qty_str)
+                if qty <= 0:
+                    continue
+                    
+                raw_type = str(row[5]).strip() if len(row) > 5 and not pd.isna(row[5]) else ""
+                # CASH 티커이면 항상 현금으로 분류 (금 조건보다 먼저 확인)
+                if ticker == "CASH" or "현금" in raw_type or "mmf" in raw_type.lower() or "mmf" in name.lower() or "현금" in name:
+                    asset_class = "cash"
+                    asset_type = "현금"
+                elif "주식" in raw_type:
+                    asset_class = "stock"
+                    asset_type = "주식"
+                elif "채권" in raw_type:
+                    asset_class = "bond"
+                    asset_type = "채권"
+                elif "금" in raw_type:
+                    asset_class = "gold"
+                    asset_type = "금"
+                elif "원자재" in raw_type:
+                    asset_class = "commodity"
+                    asset_type = "원자재"
+                else:
+                    asset_class = "stock"
+                    asset_type = "주식"
+                    
+                current_price = clean_float(row[8]) if len(row) > 8 else 0.0
+                purchase_price = clean_float(row[14]) if len(row) > 14 else 0.0
+                total_purchase = clean_float(row[15]) if len(row) > 15 else 0.0
+                total_evaluation = clean_float(row[16]) if len(row) > 16 else 0.0
+                profit = clean_float(row[17]) if len(row) > 17 else 0.0
+                
+                roi = "0.0%"
+                if len(row) > 18 and not pd.isna(row[18]):
+                    roi_val = row[18]
+                    if isinstance(roi_val, (int, float)):
+                        roi = f"{roi_val * 100:.2f}%"
+                    else:
+                        roi = str(roi_val).strip()
+                    
+                weight = "0.0%"
+                if len(row) > 21 and not pd.isna(row[21]):
+                    weight_val = row[21]
+                    if isinstance(weight_val, (int, float)):
+                        weight = f"{weight_val * 100:.2f}%"
+                    else:
+                        weight = str(weight_val).strip()
+                
+                holdings.append({
+                    "account_type": "개인연금",
+                    "ticker": ticker,
+                    "name": name,
+                    "quantity": qty,
+                    "current_price": current_price,
+                    "purchase_price": purchase_price,
+                    "total_purchase": total_purchase,
+                    "total_evaluation": total_evaluation,
+                    "profit": profit,
+                    "roi": roi,
+                    "weight": weight,
+                    "asset_class": asset_class,
+                    "asset_type": asset_type
+                })
+                
+        logger.info(f"Successfully loaded {len(holdings)} holdings (ordinary & pension) from Google Spreadsheet.")
         return holdings
         
     except Exception as e:

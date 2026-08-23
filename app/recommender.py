@@ -43,6 +43,37 @@ class RecommendationEngine:
 
         logger.info("Assembling data and preparing Gemini prompt for daily report...")
 
+        # Extract VIX and US30Y values for rule evaluation
+        vix_val = None
+        yield_30y_val = None
+        
+        if "prices" in market and "VIX" in market["prices"]:
+            vix_data = market["prices"]["VIX"]
+            if isinstance(vix_data, dict):
+                vix_val = vix_data.get("Close") or vix_data.get("Value")
+            elif hasattr(vix_data, "empty") and not vix_data.empty:
+                vix_val = float(vix_data["Close"].iloc[-1])
+                
+        if "yields" in market and "US30Y" in market["yields"]:
+            yield_data = market["yields"]["US30Y"]
+            if isinstance(yield_data, dict):
+                yield_30y_val = yield_data.get("Yield")
+            elif hasattr(yield_data, "empty") and not yield_data.empty:
+                yield_30y_val = float(yield_data["Yield"].iloc[-1])
+
+        rules_status_text = ""
+        if yield_30y_val is not None:
+            trigger_str = "TRIGGERED 🔴 (Buy Long-Term Bond Target Weight +5%)" if yield_30y_val >= 5.0 else "NOT TRIGGERED ⚪"
+            rules_status_text += f"- **Rule 1 (US 30Y Treasury Yield >= 5.0%)**: {trigger_str} (Current Yield: {yield_30y_val:.2f}%)\n"
+        else:
+            rules_status_text += f"- **Rule 1 (US 30Y Treasury Yield >= 5.0%)**: N/A (Yield data not available)\n"
+            
+        if vix_val is not None:
+            trigger_str = "TRIGGERED 🔴 (Reduce Tech Leverage / Stock Weight -10%, Increase Cash +10%)" if vix_val >= 20.0 else "NOT TRIGGERED ⚪"
+            rules_status_text += f"- **Rule 2 (Volatility VIX >= 20)**: {trigger_str} (Current VIX: {vix_val:.2f})\n"
+        else:
+            rules_status_text += f"- **Rule 2 (Volatility VIX >= 20)**: N/A (VIX data not available)\n"
+
         # 1. Format Macro Indicators
         macro_text = ""
         if "macro" in market:
@@ -125,12 +156,15 @@ Below is the collected intelligence:
 
 ### 3. FINANCIAL EXPERT YOUTUBE ANALYSES
 {yt_text}
+
+### 4. DYNAMIC PORTFOLIO RULES STATUS
+{rules_status_text}
 """
 
         if canslim_text:
-            prompt += f"\n### 4. CANSLIM WATCHLIST SCREENING RESULTS\n{canslim_text}\n"
+            prompt += f"\n### 5. CANSLIM WATCHLIST SCREENING RESULTS\n{canslim_text}\n"
         if portfolio_text:
-            prompt += f"\n### 5. PORTFOLIO STATUS & REBALANCING PLAN\n{portfolio_text}\n"
+            prompt += f"\n### 6. PORTFOLIO STATUS & REBALANCING PLAN\n{portfolio_text}\n"
 
         prompt += """
 ---
@@ -138,12 +172,15 @@ Below is the collected intelligence:
 다음 지침에 맞춰 전문적이고 완성도 높은 한국어 마크다운 보고서(Korean Markdown Report)를 생성해 주세요:
 1. **일일 투자 전략 보고서 헤더 (Daily Market Report Header)**: 공식적이고 격식 있는 제목과 오늘 날짜(예: 2026년 6월 1일)를 포함하여 시작해 주세요.
 2. **요약 (Executive Summary)**: 수집된 거시 경제 데이터와 뉴스 헤드라인을 결합하여 현재의 시장 국면(예: 강세장 우상향, 변동성 횡보장, 또는 약세장 우하향)과 주요 기회/위험 요인을 한국어로 정밀하게 진단해 주세요.
-3. **개별 전문가 영상 요약 (Individual Expert Video Summaries)**: 분석된 각 유튜브 영상에 대해 제목, 채널 핸들명, 링크를 표기하고 아래의 구조화된 요약을 한국어로 작성해 주세요:
+3. **동적 자산 배분 규칙 평가 (Dynamic Portfolio Rules Analysis)**:
+   - 위에 제공된 'DYNAMIC PORTFOLIO RULES STATUS'를 진단하고, 규칙 1(US 30Y Treasury Yield >= 5.0%) 및 규칙 2(VIX >= 20)가 활성화되었는지 언급해 주세요.
+   - 각 규칙의 활성화 여부에 따른 포트폴리오 비중 조정(채권 비중 +5%, 주식 비중 -10%, 현금 비중 +10% 등)의 필요성과 거시 경제적 관점에서의 정당성을 자세히 서술해 주세요.
+4. **개별 전문가 영상 요약 (Individual Expert Video Summaries)**: 분석된 각 유튜브 영상에 대해 제목, 채널 핸들명, 링크를 표기하고 아래의 구조화된 요약을 한국어로 작성해 주세요:
    - **시장 및 거시 전망 요약 (Market & Macro Outlook Summary)**: 해당 전문가가 바라보는 시장 방향성과 거시 지표에 대한 견해.
    - **추천 종목 및 섹터 (Buy/Long Recommendations)**: 매수 또는 보유를 추천하는 특정 주식/섹터와 그 이유.
    - **매도 및 주의 종목/섹터 (Sectors & Tickers to Sell/Avoid)**: 매도, 비중 축소 또는 회피/주의를 권고하는 주식/섹터와 그 이유.
    - **핵심 요약 (Core Takeaway)**: 영상의 핵심 논지 요약 (1~2줄).
-4. **종합 추천 및 매도 종목/섹터 (Aggregate Sector & Ticker Recommendations)**:
+5. **종합 추천 및 매도 종목/섹터 (Aggregate Sector & Ticker Recommendations)**:
    - 전문가들의 개별 견해를 전체 취합하여 매수/롱 전략을 권고한 **추천 종목 및 섹터 (Buy/Long)**를 깔끔한 마크다운 표로 작성해 주세요. (열 구성: 섹터, 종목명/티커, 추천 사유)
    - 비중 축소, 매도 또는 주의를 권고한 **매도 및 주의 종목/섹터 (Sell/Avoid)**를 깔끔한 마크다운 표로 작성해 주세요. (열 구성: 섹터, 종목명/티커, 사유)
 
@@ -151,16 +188,16 @@ Below is the collected intelligence:
 """
 
         if canslim_text:
-            prompt += "\n5. **Equity Screening & Stock Selection**: Highlight any stocks that passed the CANSLIM screens. If no stock passed strictly, analyze the top-ranked runners-up and explain their strengths and weaknesses.\n"
+            prompt += "\n6. **Equity Screening & Stock Selection**: Highlight any stocks that passed the CANSLIM screens. If no stock passed strictly, analyze the top-ranked runners-up and explain their strengths and weaknesses.\n"
         if portfolio_text:
-            prompt += """\n6. **Asset Allocation & Portfolio Rebalancing Action Plan**:
-   - Provide a clean Markdown Table showing: Asset Class, Target Weight, Actual Weight, Deviation, Target Value, Actual Value, and Action (Buy/Sell/Hold).
+            prompt += """\n7. **Asset Allocation & Portfolio Rebalancing Action Plan**:
+   - Provide a clean Markdown Table showing: Asset Class, Target Weight, Actual Weight, Deviation, Target Value, Actual Value, and Action (Buy/Sell/Hold). Note that the Target Weight should reflect the dynamically adjusted target allocation weights from the dynamic portfolio rules evaluation.
    - Display a list of concrete, executable trade transactions (rounded integer shares) required to align the portfolio back to the target allocation.
-   - Explain the rationale behind the rebalancing.
+   - Explain the rationale behind the rebalancing (e.g., drift thresholds, dynamic yield or VIX adjustments).
 """
 
         prompt += """
-7. **Actionable Action Items**: A concise list of 3-5 high-priority next steps for the investor today.
+8. **Actionable Action Items**: A concise list of 3-5 high-priority next steps for the investor today, incorporating any actions necessitated by the dynamic rules.
 
 Write the report in a clear, authoritative, professional tone, suitable for high-net-worth investors or fund managers.
 """

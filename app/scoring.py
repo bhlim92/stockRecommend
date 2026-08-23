@@ -116,17 +116,19 @@ class QuantScorer:
 
                         # Calculate technical entry score if we have at least 200 days of data
                         if len(df) >= 200:
+                            current_close = float(closes.iloc[-1])
+                            
                             # 1. S1: Moving Averages Alignment
                             sma_5_val = ma["sma_5"]
                             sma_20_val = ma["sma_20"]
                             sma_200_val = ma["sma_200"]
                             
-                            if sma_5_val > sma_20_val > sma_200_val:
+                            if current_close > sma_5_val > sma_20_val > sma_200_val:
                                 s1 = 1.0
-                                entry_details.append("5/20/200일선 정배열 (우상향)")
-                            elif sma_5_val < sma_20_val < sma_200_val:
+                                entry_details.append("현재가 > 5/20/200일선 정배열 (우상향)")
+                            elif current_close < sma_5_val < sma_20_val < sma_200_val:
                                 s1 = -1.0
-                                entry_details.append("5/20/200일선 역배열 (우하향)")
+                                entry_details.append("현재가 < 5/20/200일선 역배열 (우하향)")
                             else:
                                 s1 = 0.0
                                 entry_details.append("이평선 혼조세 (횡보)")
@@ -237,6 +239,13 @@ class QuantScorer:
                     "volume": vol,
                     "entry_details": entry_details,
                     "eval_details": eval_details,
+                    # Sector & analyst data (may be None for Korean stocks)
+                    "sector": fundamentals.get("sector"),
+                    "industry": fundamentals.get("industry"),
+                    "analyst_rating": fundamentals.get("analyst_rating"),
+                    "analyst_rating_raw": fundamentals.get("analyst_rating_raw"),
+                    "analyst_rating_score": fundamentals.get("analyst_rating_score"),
+                    "analyst_count": fundamentals.get("analyst_count"),
                 }
             except Exception as exc:  # pragma: no cover – defensive logging
                 self.logger.exception("Failed to calculate scores for %s", ticker)
@@ -317,6 +326,19 @@ class QuantScorer:
         Missing values are normalised to ``None`` so that the scoring routine can
         handle them gracefully.
         """
+        # yfinance recommendationKey: "strong_buy", "buy", "hold", "sell", "strong_sell"
+        recommendation_key = info.get("recommendationKey")
+        recommendation_map = {
+            "strong_buy": "강력매수",
+            "buy": "매수",
+            "hold": "유지",
+            "underperform": "매도",
+            "sell": "매도",
+            "strong_sell": "강력매도",
+        }
+        analyst_rating = recommendation_map.get(str(recommendation_key).lower(), None) if recommendation_key else None
+        analyst_rating_raw = str(recommendation_key).lower() if recommendation_key else None
+
         fundamentals = {
             "per": info.get("trailingPE"),
             "peg": info.get("pegRatio"),
@@ -325,6 +347,12 @@ class QuantScorer:
             "target_price": info.get("targetMeanPrice"),
             "canslim_passed": info.get("passed_screener"),
             "canslim_reasons": info.get("reasons"),
+            "sector": info.get("sector"),
+            "industry": info.get("industry"),
+            "analyst_rating": analyst_rating,
+            "analyst_rating_raw": analyst_rating_raw,
+            "analyst_rating_score": info.get("recommendationMean"),  # 1=강력매수 ~ 5=강력매도
+            "analyst_count": info.get("numberOfAnalystOpinions"),
         }
         fundamentals["current_price"] = current_price
         return fundamentals
