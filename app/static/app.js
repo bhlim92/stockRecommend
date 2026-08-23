@@ -51,10 +51,20 @@ document.addEventListener("DOMContentLoaded", () => {
     const viewingReportTitle = document.getElementById("viewing-report-title");
     const reportMdDisplay = document.getElementById("report-md-display");
     const btnCloseViewer = document.getElementById("btn-close-viewer");
+    const btnGdocOpenLink = document.getElementById("btn-gdoc-open-link");
     const holdingsList = document.getElementById("holdings-list");
     const btnGenerateRebalance = document.getElementById("btn-generate-rebalance");
     const rebalanceStrategyDisplay = document.getElementById("rebalance-strategy-display");
     const rebalanceCardsContainer = document.getElementById("rebalance-cards-container");
+    
+    // Daily Report Search DOM Elements
+    const reportSearchInput = document.getElementById("report-search-input");
+    const btnClearReportSearch = document.getElementById("btn-clear-report-search");
+    const reportsCardsGrid = document.getElementById("reports-cards-grid");
+    const reportsTotalCountEl = document.getElementById("reports-total-count");
+    const filterChips = document.querySelectorAll(".report-filter-chips .filter-chip");
+    let currentReportActionFilter = "";
+    let reportSearchDebounceTimer = null;
 
     // Step items map
     const stepItems = {
@@ -1504,16 +1514,6 @@ document.addEventListener("DOMContentLoaded", () => {
     // ==========================================================================
     // Daily Report Smart Search & Archive Functions
     // ==========================================================================
-
-    const reportSearchInput = document.getElementById("report-search-input");
-    const btnClearReportSearch = document.getElementById("btn-clear-report-search");
-    const reportsCardsGrid = document.getElementById("reports-cards-grid");
-    const reportsTotalCountEl = document.getElementById("reports-total-count");
-    const btnGdocOpenLink = document.getElementById("btn-gdoc-open-link");
-    const filterChips = document.querySelectorAll(".report-filter-chips .filter-chip");
-
-    let currentReportActionFilter = "";
-    let reportSearchDebounceTimer = null;
 
     async function loadSmartReports(query = "", action = "") {
         if (!reportsCardsGrid) return;
