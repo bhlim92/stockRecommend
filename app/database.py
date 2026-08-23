@@ -33,6 +33,20 @@ class ScreenerResult(Base):
     sparkline_volumes = Column(Text, nullable=True)          # JSON 배열 문자열
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
+class DailyReport(Base):
+    __tablename__ = 'daily_reports'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    report_date = Column(String(20), nullable=False, unique=True, index=True) # 'YYYY-MM-DD'
+    title = Column(String(200), nullable=False)
+    macro_summary = Column(Text, nullable=True)
+    recommended_stocks = Column(Text, nullable=True) # JSON Array string: [{"symbol":"005930.KS","name":"...","action":"BUY", ...}]
+    rebalance_actions = Column(Text, nullable=True)  # JSON Array string
+    content = Column(Text, nullable=True)            # Full markdown text
+    file_path = Column(String(255), nullable=True)
+    gdrive_link = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
 # Database Engine initialization
 engine = None
 SessionLocal = None
@@ -324,4 +338,209 @@ def get_latest_score_by_symbol(symbol: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.error(f"Error retrieving score for {symbol}: {str(e)}")
         return None
+
+
+# ─── Daily Report Archiving & Full-Text Search Functions ─────────────────────────
+
+def save_daily_report(
+    report_date: str,
+    title: str,
+    macro_summary: str,
+    content: str,
+    recommended_stocks: Optional[List[Dict[str, Any]]] = None,
+    rebalance_actions: Optional[List[Dict[str, Any]]] = None,
+    file_path: Optional[str] = None,
+    gdrive_link: Optional[str] = None
+) -> bool:
+    """
+    Saves or updates a daily investment report in the database for indexing and web searching.
+    """
+    global SessionLocal
+    if SessionLocal is None:
+        if not init_db():
+            logger.warning("Database not initialized. Daily report archiving skipped.")
+            return False
+            
+    import json
+    try:
+        db = SessionLocal()
+        existing = db.query(DailyReport).filter(DailyReport.report_date == report_date).first()
+        
+        rec_stocks_json = json.dumps(recommended_stocks, ensure_ascii=False) if recommended_stocks else "[]"
+        reb_actions_json = json.dumps(rebalance_actions, ensure_ascii=False) if rebalance_actions else "[]"
+        
+        if existing:
+            existing.title = title
+            existing.macro_summary = macro_summary
+            existing.content = content
+            existing.recommended_stocks = rec_stocks_json
+            existing.rebalance_actions = reb_actions_json
+            if file_path:
+                existing.file_path = file_path
+            if gdrive_link:
+                existing.gdrive_link = gdrive_link
+            logger.info(f"Updated existing daily report in database for date: {report_date}")
+        else:
+            new_report = DailyReport(
+                report_date=report_date,
+                title=title,
+                macro_summary=macro_summary,
+                recommended_stocks=rec_stocks_json,
+                rebalance_actions=reb_actions_json,
+                content=content,
+                file_path=file_path or f"reports/{report_date}_report.md",
+                gdrive_link=gdrive_link
+            )
+            db.add(new_report)
+            logger.info(f"Archived new daily report to database for date: {report_date}")
+            
+        db.commit()
+        db.close()
+        return True
+    except Exception as e:
+        logger.error(f"Failed to save daily report for date {report_date}: {str(e)}")
+        return False
+
+
+def search_daily_reports(
+    q: Optional[str] = None,
+    symbol: Optional[str] = None,
+    action: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0
+) -> Dict[str, Any]:
+    """
+    Performs full-text keyword search and multi-criteria filtering across all archived reports.
+    """
+    global SessionLocal
+    if SessionLocal is None:
+        if not init_db():
+            return {"total": 0, "results": []}
+            
+    import json
+    try:
+        db = SessionLocal()
+        query = db.query(DailyReport)
+        
+        if from_date:
+            query = query.filter(DailyReport.report_date >= from_date)
+        if to_date:
+            query = query.filter(DailyReport.report_date <= to_date)
+            
+        if q:
+            keyword = f"%{q}%"
+            query = query.filter(
+                (DailyReport.title.ilike(keyword)) |
+                (DailyReport.macro_summary.ilike(keyword)) |
+                (DailyReport.content.ilike(keyword)) |
+                (DailyReport.recommended_stocks.ilike(keyword))
+            )
+            
+        if symbol:
+            sym_keyword = f"%{symbol.upper()}%"
+            query = query.filter(DailyReport.recommended_stocks.ilike(sym_keyword))
+            
+        if action:
+            act_keyword = f"%{action.upper()}%"
+            query = query.filter(DailyReport.recommended_stocks.ilike(act_keyword))
+            
+        total = query.count()
+        records = query.order_by(DailyReport.report_date.desc()).offset(offset).limit(limit).all()
+        
+        results = []
+        for r in records:
+            # Highlight snippet if keyword exists
+            snippet = ""
+            if q and r.content:
+                idx = r.content.lower().find(q.lower())
+                if idx != -1:
+                    start = max(0, idx - 60)
+                    end = min(len(r.content), idx + len(q) + 90)
+                    snippet = "..." + r.content[start:end].replace("\n", " ") + "..."
+            
+            if not snippet and r.macro_summary:
+                snippet = r.macro_summary[:160] + ("..." if len(r.macro_summary) > 160 else "")
+                
+            results.append({
+                "id": r.id,
+                "report_date": r.report_date,
+                "title": r.title,
+                "macro_summary": r.macro_summary,
+                "snippet": snippet,
+                "recommended_stocks": json.loads(r.recommended_stocks) if r.recommended_stocks else [],
+                "rebalance_actions": json.loads(r.rebalance_actions) if r.rebalance_actions else [],
+                "file_path": r.file_path,
+                "gdrive_link": r.gdrive_link,
+                "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else ""
+            })
+            
+        db.close()
+        return {"total": total, "results": results}
+    except Exception as e:
+        logger.error(f"Error searching daily reports: {str(e)}")
+        return {"total": 0, "results": []}
+
+
+def get_daily_report_by_date(report_date: str) -> Optional[Dict[str, Any]]:
+    """Retrieves full report content and metadata for a specific date."""
+    global SessionLocal
+    if SessionLocal is None:
+        if not init_db():
+            return None
+            
+    import json
+    try:
+        db = SessionLocal()
+        r = db.query(DailyReport).filter(DailyReport.report_date == report_date).first()
+        if not r:
+            db.close()
+            return None
+            
+        res = {
+            "id": r.id,
+            "report_date": r.report_date,
+            "title": r.title,
+            "macro_summary": r.macro_summary,
+            "content": r.content,
+            "recommended_stocks": json.loads(r.recommended_stocks) if r.recommended_stocks else [],
+            "rebalance_actions": json.loads(r.rebalance_actions) if r.rebalance_actions else [],
+            "file_path": r.file_path,
+            "gdrive_link": r.gdrive_link,
+            "created_at": r.created_at.strftime("%Y-%m-%d %H:%M:%S") if r.created_at else ""
+        }
+        db.close()
+        return res
+    except Exception as e:
+        logger.error(f"Error getting daily report for date {report_date}: {str(e)}")
+        return None
+
+
+def list_daily_report_dates(limit: int = 30) -> List[Dict[str, Any]]:
+    """Returns a list of all available report dates and summary titles."""
+    global SessionLocal
+    if SessionLocal is None:
+        if not init_db():
+            return []
+            
+    try:
+        db = SessionLocal()
+        records = db.query(DailyReport.report_date, DailyReport.title, DailyReport.gdrive_link, DailyReport.created_at)\
+                    .order_by(DailyReport.report_date.desc()).limit(limit).all()
+        res = [
+            {
+                "report_date": r[0],
+                "title": r[1],
+                "gdrive_link": r[2],
+                "created_at": r[3].strftime("%Y-%m-%d %H:%M:%S") if r[3] else ""
+            }
+            for r in records
+        ]
+        db.close()
+        return res
+    except Exception as e:
+        logger.error(f"Error listing daily report dates: {str(e)}")
+        return []
+
 

@@ -1497,107 +1497,235 @@ document.addEventListener("DOMContentLoaded", () => {
     // ==========================================================================
 
     async function loadReportsList() {
-        let serverReports = [];
+        // Load smart report search system
+        loadSmartReports();
+    }
+
+    // ==========================================================================
+    // Daily Report Smart Search & Archive Functions
+    // ==========================================================================
+
+    const reportSearchInput = document.getElementById("report-search-input");
+    const btnClearReportSearch = document.getElementById("btn-clear-report-search");
+    const reportsCardsGrid = document.getElementById("reports-cards-grid");
+    const reportsTotalCountEl = document.getElementById("reports-total-count");
+    const btnGdocOpenLink = document.getElementById("btn-gdoc-open-link");
+    const filterChips = document.querySelectorAll(".report-filter-chips .filter-chip");
+
+    let currentReportActionFilter = "";
+    let reportSearchDebounceTimer = null;
+
+    async function loadSmartReports(query = "", action = "") {
+        if (!reportsCardsGrid) return;
+
+        reportsCardsGrid.innerHTML = `
+            <div class="skeleton-card" style="height: 160px;"></div>
+            <div class="skeleton-card" style="height: 160px;"></div>
+        `;
+
         try {
-            const response = await fetch(`${API_REPORTS}?_t=${Date.now()}`);
+            const params = new URLSearchParams();
+            if (query.trim()) params.append("q", query.trim());
+            if (action) params.append("action", action);
+            params.append("_t", Date.now());
+
+            const response = await fetch(`/api/reports/search?${params.toString()}`);
             if (response.status === 401) {
                 window.location.href = "/login.html";
                 return;
             }
-            if (response.ok) {
-                serverReports = await response.json();
+
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const data = await response.json();
+
+            if (reportsTotalCountEl) {
+                reportsTotalCountEl.innerText = data.total || 0;
             }
+
+            renderReportCards(data.results || [], query.trim());
         } catch (error) {
-            console.warn("Could not load reports from server:", error);
+            console.warn("Could not load reports via smart search:", error);
+            reportsCardsGrid.innerHTML = `
+                <div style="grid-column: 1 / -1; text-align: center; padding: 30px 0; color: var(--text-secondary);">
+                    리포트를 불러오는 중 일시적 오류가 발생했습니다: ${error.message}
+                </div>
+            `;
         }
-        
-        let localReports = [];
-        try {
-            localReports = JSON.parse(localStorage.getItem("reports_archive")) || [];
-        } catch (e) {
-            localReports = [];
-        }
-        
-        const allReportsMap = new Map();
-        serverReports.forEach(filename => {
-            allReportsMap.set(filename, { filename, isLocalOnly: false });
-        });
-        localReports.forEach(item => {
-            allReportsMap.set(item.filename, { filename: item.filename, isLocalOnly: true, content: item.content });
-        });
-        
-        const sortedReports = Array.from(allReportsMap.values()).sort((a, b) => b.filename.localeCompare(a.filename));
-        renderReportsList(sortedReports);
     }
 
-    function getReportDisplayName(filename) {
-        const rebalanceMatch = filename.match(/^(\d{4}-\d{2}-\d{2})_(\d{2})-(\d{2})-(\d{2})_rebalance/i);
-        if (rebalanceMatch) {
-            return `⚖️ 리밸런싱 전략 (${rebalanceMatch[1]} ${rebalanceMatch[2]}:${rebalanceMatch[3]}:${rebalanceMatch[4]})`;
-        }
-        const reportMatch = filename.match(/^(\d{4}-\d{2}-\d{2})_report/i);
-        if (reportMatch) {
-            return `📈 추천 보고서 (${reportMatch[1]})`;
-        }
-        if (filename.toLowerCase().includes("rebalance") || filename.toLowerCase().includes("strategy")) {
-            return `⚖️ 리밸런싱 전략 (${filename.replace(".md", "")})`;
-        }
-        return `📈 보고서 (${filename.replace(".md", "")})`;
-    }
+    function renderReportCards(results, query = "") {
+        if (!reportsCardsGrid) return;
+        reportsCardsGrid.innerHTML = "";
 
-    function renderReportsList(reports) {
-        reportsList.innerHTML = "";
-        
-        if (reports.length === 0) {
-            reportsList.innerHTML = '<li class="empty-item">보관된 보고서가 없습니다.</li>';
+        if (results.length === 0) {
+            reportsCardsGrid.innerHTML = `
+                <div style="grid-column: 1 / -1; text-align: center; padding: 40px 0; color: var(--text-muted);">
+                    <div style="font-size: 24px; margin-bottom: 8px;">🔍</div>
+                    일치하는 리포트가 없습니다. 검색어를 변경하거나 필터를 초기화해 보세요.
+                </div>
+            `;
             return;
         }
 
-        reports.forEach(item => {
-            const li = document.createElement("li");
-            
-            const nameSpan = document.createElement("span");
-            nameSpan.className = "report-file-name";
-            nameSpan.innerText = getReportDisplayName(item.filename);
-            
-            const btnView = document.createElement("button");
-            btnView.className = "btn-report-view";
-            btnView.innerText = "보기";
-            btnView.addEventListener("click", (e) => {
-                e.stopPropagation();
-                viewReport(item);
-            });
+        results.forEach(report => {
+            const card = document.createElement("div");
+            card.className = "report-summary-card";
+            card.style.cssText = `
+                background: rgba(18, 24, 38, 0.7);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 12px;
+                padding: 16px;
+                display: flex;
+                flex-direction: column;
+                justify-content: space-between;
+                transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+                cursor: pointer;
+            `;
 
-            li.appendChild(nameSpan);
-            li.appendChild(btnView);
-            li.addEventListener("click", () => viewReport(item));
-            
-            reportsList.appendChild(li);
+            card.onmouseenter = () => {
+                card.style.transform = "translateY(-3px)";
+                card.style.borderColor = "var(--accent-cyan)";
+                card.style.boxShadow = "0 8px 24px rgba(0, 242, 254, 0.12)";
+            };
+            card.onmouseleave = () => {
+                card.style.transform = "translateY(0)";
+                card.style.borderColor = "rgba(255, 255, 255, 0.08)";
+                card.style.boxShadow = "none";
+            };
+
+            // Highlight keyword helper
+            const highlightText = (text) => {
+                if (!query || !text) return text || "";
+                const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, "gi");
+                return text.replace(regex, `<mark style="background: rgba(0, 242, 254, 0.35); color: #fff; border-radius: 2px; padding: 0 2px;">$1</mark>`);
+            };
+
+            // Stock recommendation badges
+            let stocksHtml = "";
+            if (report.recommended_stocks && report.recommended_stocks.length > 0) {
+                const stockBadges = report.recommended_stocks.slice(0, 4).map(st => {
+                    const isBuy = (st.action || "").toUpperCase().includes("BUY") || (st.action || "").includes("매수");
+                    const isSell = (st.action || "").toUpperCase().includes("SELL") || (st.action || "").includes("매도");
+                    const badgeBg = isBuy ? "rgba(0, 230, 118, 0.15)" : (isSell ? "rgba(255, 82, 82, 0.15)" : "rgba(255, 255, 255, 0.08)");
+                    const badgeColor = isBuy ? "var(--accent-green)" : (isSell ? "var(--accent-red)" : "var(--text-secondary)");
+                    const label = isBuy ? "BUY" : (isSell ? "SELL" : "HOLD");
+                    const sym = st.symbol || st.name || "";
+                    return `<span style="font-size: 11px; padding: 3px 7px; border-radius: 4px; background: ${badgeBg}; color: ${badgeColor}; font-weight: 600; display: inline-flex; align-items: center; gap: 4px;">
+                        <span style="font-size: 9px; opacity: 0.8;">[${label}]</span> ${sym}
+                    </span>`;
+                }).join(" ");
+
+                const moreCount = report.recommended_stocks.length - 4;
+                const moreBadge = moreCount > 0 ? `<span style="font-size: 10px; color: var(--text-muted);">+${moreCount}개 더보기</span>` : "";
+                stocksHtml = `<div style="margin-top: 10px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">${stockBadges} ${moreBadge}</div>`;
+            }
+
+            const snippet = report.snippet || report.macro_summary || "상세 추천 내용 및 거시 경제 분석이 포함되어 있습니다.";
+
+            card.innerHTML = `
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-size: 12px; font-weight: 700; color: var(--accent-cyan); background: rgba(0, 242, 254, 0.1); padding: 2px 8px; border-radius: 4px;">
+                            📅 ${report.report_date}
+                        </span>
+                        <span style="font-size: 11px; color: var(--text-muted);">
+                            ${report.created_at ? report.created_at.split(' ')[0] : ''}
+                        </span>
+                    </div>
+                    <h3 style="font-size: 14px; font-weight: 700; color: #fff; margin: 0 0 6px 0; line-height: 1.4;">
+                        ${highlightText(report.title || `${report.report_date} 일일 투자 전략 보고서`)}
+                    </h3>
+                    <p style="font-size: 12px; color: var(--text-secondary); line-height: 1.5; margin: 0; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;">
+                        ${highlightText(snippet)}
+                    </p>
+                    ${stocksHtml}
+                </div>
+                <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); display: flex; justify-content: space-between; align-items: center;">
+                    <span style="font-size: 11px; color: var(--accent-cyan); font-weight: 600;">📖 전문 열람하기 →</span>
+                    ${report.gdrive_link ? `<a href="${report.gdrive_link}" target="_blank" onclick="event.stopPropagation()" style="font-size: 11px; color: var(--text-muted); text-decoration: none;">🔗 Google Doc</a>` : ''}
+                </div>
+            `;
+
+            card.addEventListener("click", () => openReportDetail(report.report_date));
+            reportsCardsGrid.appendChild(card);
         });
     }
 
-    async function viewReport(item) {
-        if (item.isLocalOnly && item.content) {
-            renderReportInViewer(item.filename, item.content);
-        } else {
-            try {
-                const response = await fetch(`${API_REPORTS}/${item.filename}?_t=${Date.now()}`);
-                if (!response.ok) throw new Error("Failed to retrieve report content");
-                
-                const data = await response.json();
-                renderReportInViewer(data.filename, data.content);
-            } catch (error) {
-                console.error("Failed to view report:", error);
-                alert(`보고서를 로드하지 못했습니다: ${error.message}`);
+    async function openReportDetail(reportDate) {
+        if (!reportViewerSection) return;
+
+        viewingReportTitle.innerText = `⏳ ${reportDate} 투자 리포트 로딩 중...`;
+        reportMdDisplay.innerHTML = `<div style="text-align: center; padding: 40px;"><div class="btn-loader" style="display: inline-block;"></div><div style="margin-top: 10px; color: var(--text-secondary);">리포트 본문을 불러오는 중입니다...</div></div>`;
+        reportViewerSection.classList.remove("hidden");
+        reportViewerSection.scrollIntoView({ behavior: "smooth" });
+
+        try {
+            const res = await fetch(`/api/reports/detail/${reportDate}?_t=${Date.now()}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+
+            viewingReportTitle.innerText = `📈 ${data.title || `${reportDate} 일일 투자 전략 보고서`}`;
+            const subtitleEl = document.getElementById("viewing-report-subtitle");
+            if (subtitleEl) {
+                subtitleEl.innerText = `작성일자: ${data.report_date} | 저장경로: ${data.file_path || 'reports/' + reportDate + '_report.md'}`;
             }
+
+            if (btnGdocOpenLink) {
+                if (data.gdrive_link) {
+                    btnGdocOpenLink.href = data.gdrive_link;
+                    btnGdocOpenLink.classList.remove("hidden");
+                } else {
+                    btnGdocOpenLink.classList.add("hidden");
+                }
+            }
+
+            reportMdDisplay.innerHTML = parseMarkdown(data.content || "리포트 본문이 비어있습니다.");
+        } catch (error) {
+            console.error("Failed to load report detail:", error);
+            reportMdDisplay.innerHTML = `<div style="color: var(--accent-red); padding: 20px; text-align: center;">리포트 본문을 불러오지 못했습니다: ${error.message}</div>`;
         }
     }
 
-    function renderReportInViewer(filename, content) {
-        viewingReportTitle.innerText = `${filename.replace(".md", "")} 투자 종목 추천 리포트`;
-        reportMdDisplay.innerHTML = parseMarkdown(content);
-        reportViewerSection.classList.remove("hidden");
-        reportViewerSection.scrollIntoView({ behavior: "smooth" });
+    // Attach search and filter events
+    if (reportSearchInput) {
+        reportSearchInput.addEventListener("input", (e) => {
+            const query = e.target.value;
+            if (btnClearReportSearch) {
+                btnClearReportSearch.style.display = query ? "block" : "none";
+            }
+            clearTimeout(reportSearchDebounceTimer);
+            reportSearchDebounceTimer = setTimeout(() => {
+                loadSmartReports(query, currentReportActionFilter);
+            }, 250);
+        });
+    }
+
+    if (btnClearReportSearch) {
+        btnClearReportSearch.addEventListener("click", () => {
+            if (reportSearchInput) {
+                reportSearchInput.value = "";
+                btnClearReportSearch.style.display = "none";
+                loadSmartReports("", currentReportActionFilter);
+            }
+        });
+    }
+
+    filterChips.forEach(chip => {
+        chip.addEventListener("click", () => {
+            filterChips.forEach(c => c.classList.remove("active"));
+            chip.classList.add("active");
+            currentReportActionFilter = chip.getAttribute("data-action") || "";
+            const query = reportSearchInput ? reportSearchInput.value : "";
+            loadSmartReports(query, currentReportActionFilter);
+        });
+    });
+
+    if (btnCloseViewer) {
+        btnCloseViewer.addEventListener("click", () => {
+            if (reportViewerSection) {
+                reportViewerSection.classList.add("hidden");
+            }
+        });
     }
 
     // A lightweight, offline-ready Regex Markdown Parser

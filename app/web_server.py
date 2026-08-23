@@ -987,6 +987,51 @@ def get_reports_list() -> JSONResponse:
     files.sort(reverse=True)
     return JSONResponse(content=files)
 
+
+# ==============================================================================
+# Daily Report Archive & Search Endpoints
+# ==============================================================================
+
+@app.get("/api/reports/search")
+def api_search_reports(
+    q: Optional[str] = None,
+    symbol: Optional[str] = None,
+    action: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0
+):
+    """Searches archived daily reports with keyword, symbol, action, or date filters."""
+    from app.database import search_daily_reports
+    res = search_daily_reports(
+        q=q,
+        symbol=symbol,
+        action=action,
+        from_date=from_date,
+        to_date=to_date,
+        limit=limit,
+        offset=offset
+    )
+    return JSONResponse(content=res)
+
+@app.get("/api/reports/detail/{report_date}")
+def api_get_report_detail(report_date: str):
+    """Retrieves full report content and recommendation metadata for a specific date."""
+    from app.database import get_daily_report_by_date
+    report = get_daily_report_by_date(report_date)
+    if not report:
+        raise HTTPException(status_code=404, detail=f"Report for date {report_date} not found.")
+    return JSONResponse(content=report)
+
+@app.get("/api/reports/dates")
+def api_list_report_dates(limit: int = 30):
+    """Lists available report dates for timeline view."""
+    from app.database import list_daily_report_dates
+    dates = list_daily_report_dates(limit=limit)
+    return JSONResponse(content=dates)
+
+
 @app.get("/api/reports/{filename}")
 def get_report_content(filename: str) -> JSONResponse:
     """Serves the contents of a specific archived report from Google Drive or local filesystem."""
@@ -1562,5 +1607,6 @@ def get_macro_opinions() -> JSONResponse:
             })
             
     return JSONResponse(content=opinions)
+
 
 

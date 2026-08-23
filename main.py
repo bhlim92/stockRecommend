@@ -218,6 +218,8 @@ def main() -> None:
     except Exception as e:
         logger.error(f"Failed to save report locally: {str(e)}")
 
+    gdoc_link = None
+
     # 9. Step 8: Upload to Google Drive (if not dry run)
     if not args.dry_run:
         logger.info("Uploading report to Google Drive...")
@@ -250,6 +252,31 @@ def main() -> None:
         print(f"The report has been saved locally at: {local_report_filename}")
         print("="*80 + "\n")
         logger.info("Daily Pipeline completed in DRY-RUN mode.")
+
+    # 10. Step 9: Automatic DB Indexing for Web Search & Archive
+    try:
+        from app.database import save_daily_report
+        # Extract title and macro summary
+        title_match = re.search(r'^#\s+(.+)$', report_markdown, re.MULTILINE)
+        title = title_match.group(1).strip() if title_match else f"{timestamp} Daily Investment Report"
+        
+        macro_match = re.search(r'###\s+1\.\s+요약[^\n]*\n(.*?)(?=\n---|\n###|\Z)', report_markdown, re.DOTALL)
+        macro_summary = macro_match.group(1).strip() if macro_match else ""
+        if not macro_summary:
+            paras = [p.strip() for p in report_markdown.split("\n\n") if p.strip() and not p.startswith("#")]
+            macro_summary = paras[0] if paras else ""
+
+        save_daily_report(
+            report_date=timestamp,
+            title=title,
+            macro_summary=macro_summary,
+            content=report_markdown,
+            file_path=local_report_filename,
+            gdrive_link=gdoc_link
+        )
+        logger.info(f"Successfully indexed daily report for {timestamp} into database.")
+    except Exception as e:
+        logger.warning(f"Could not index daily report into database: {str(e)}")
 
 if __name__ == "__main__":
     main()

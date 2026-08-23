@@ -227,3 +227,55 @@ def test_db_settings_api():
         assert response.status_code == 200
         assert "연결에 성공하였습니다" in response.json()["message"]
         assert response.json()["connected"] is True
+
+
+def test_api_reports_search_and_detail():
+    mock_search_result = {
+        "total": 1,
+        "results": [
+            {
+                "id": 1,
+                "report_date": "2026-08-23",
+                "title": "2026-08-23 Daily Report",
+                "macro_summary": "Macro summary text",
+                "snippet": "...sample snippet...",
+                "recommended_stocks": [{"symbol": "005930.KS", "action": "BUY"}],
+                "gdrive_link": "https://docs.google.com/test"
+            }
+        ]
+    }
+    
+    mock_detail = {
+        "id": 1,
+        "report_date": "2026-08-23",
+        "title": "2026-08-23 Daily Report",
+        "macro_summary": "Macro summary text",
+        "content": "# Full markdown content",
+        "recommended_stocks": [{"symbol": "005930.KS", "action": "BUY"}],
+        "gdrive_link": "https://docs.google.com/test"
+    }
+    
+    mock_dates = [
+        {"report_date": "2026-08-23", "title": "2026-08-23 Daily Report", "gdrive_link": "https://docs.google.com/test"}
+    ]
+    
+    with patch("app.database.search_daily_reports", return_value=mock_search_result), \
+         patch("app.database.get_daily_report_by_date", return_value=mock_detail), \
+         patch("app.database.list_daily_report_dates", return_value=mock_dates):
+        
+        # Test Search
+        res_search = client.get("/api/reports/search?q=macro")
+        assert res_search.status_code == 200
+        assert res_search.json()["total"] == 1
+        assert res_search.json()["results"][0]["report_date"] == "2026-08-23"
+        
+        # Test Detail
+        res_detail = client.get("/api/reports/detail/2026-08-23")
+        assert res_detail.status_code == 200
+        assert res_detail.json()["content"] == "# Full markdown content"
+        
+        # Test Dates
+        res_dates = client.get("/api/reports/dates")
+        assert res_dates.status_code == 200
+        assert len(res_dates.json()) == 1
+

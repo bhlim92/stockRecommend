@@ -275,28 +275,59 @@
         </div>
 
         <div class="dashboard-grid secondary-grid" style="grid-template-columns: 1fr;">
-            <!-- Reports Archiver (Now full width at bottom) -->
+            <!-- Reports Archiver & Smart Search Panel -->
             <section class="glass-card reports-panel">
-                <div class="card-header">
-                    <h2>종목 발굴 보고서 보관소</h2>
-                    <span class="card-subtitle">로컬에 저장된 일일 투자 추천 문서 목록</span>
+                <div class="card-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 15px;">
+                    <div>
+                        <h2>📑 일일 투자 리포트 스마트 아카이브 & 전문 검색</h2>
+                        <span class="card-subtitle">AI가 생성한 일일 종목 추천 및 거시 경제 요약 리포트 실시간 검색·열람</span>
+                    </div>
+                    <div style="font-size: 12px; color: var(--text-secondary);" id="reports-count-badge">
+                        총 <b id="reports-total-count" style="color: var(--accent-cyan);">0</b>건의 리포트
+                    </div>
                 </div>
-                <div class="reports-archiver-container">
-                    <ul class="reports-list-items" id="reports-list">
-                        <li class="empty-item">보고서가 없습니다.</li>
-                    </ul>
+
+                <!-- Report Search & Filter Bar -->
+                <div class="report-search-bar-container" style="margin-top: 15px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                    <div style="flex: 1; min-width: 260px; position: relative;">
+                        <input type="text" id="report-search-input" placeholder="🔍 키워드, 종목명, 티커, 거시경제 이슈 검색 (예: 금리, 반도체, 005930)..." 
+                               style="width: 100%; padding: 10px 14px; background: rgba(0,0,0,0.35); border: 1px solid rgba(255,255,255,0.15); border-radius: 8px; color: #fff; font-size: 13px; outline: none; transition: border 0.2s;" />
+                        <button id="btn-clear-report-search" style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--text-muted); cursor: pointer; display: none; font-size: 14px;">✕</button>
+                    </div>
+                    <div class="report-filter-chips" style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button class="filter-chip active" data-action="">전체</button>
+                        <button class="filter-chip" data-action="BUY">🟢 매수(BUY) 포함</button>
+                        <button class="filter-chip" data-action="SELL">🔴 매도(SELL) 포함</button>
+                    </div>
+                </div>
+                
+                <!-- Report Cards Grid / Timeline -->
+                <div class="reports-archiver-container" style="margin-top: 20px;">
+                    <div id="reports-cards-grid" class="reports-cards-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px;">
+                        <!-- Report cards rendered dynamically via JS -->
+                        <div class="skeleton-card" style="height: 160px;"></div>
+                        <div class="skeleton-card" style="height: 160px;"></div>
+                    </div>
+                    
+                    <!-- Fallback List view (hidden by default) -->
+                    <ul class="reports-list-items hidden" id="reports-list" style="margin-top: 15px;"></ul>
                 </div>
             </section>
         </div>
 
         <!-- Report Content Viewer Modal/Card -->
-        <section class="glass-card report-viewer-card hidden" id="report-viewer-section">
-            <div class="card-header report-viewer-header">
+        <section class="glass-card report-viewer-card hidden" id="report-viewer-section" style="margin-top: 25px;">
+            <div class="card-header report-viewer-header" style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
                 <div>
                     <h2 id="viewing-report-title">투자 리포트 상세 보기</h2>
                     <span class="card-subtitle" id="viewing-report-subtitle">로컬 마크다운 파일 뷰어</span>
                 </div>
-                <button class="btn-close" id="btn-close-viewer">닫기</button>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <a id="btn-gdoc-open-link" href="#" target="_blank" class="btn-secondary hidden" style="text-decoration: none; padding: 6px 14px; font-size: 12px; display: inline-flex; align-items: center; gap: 5px;">
+                        📄 Google Docs로 열기 ↗
+                    </a>
+                    <button class="btn-close" id="btn-close-viewer">닫기 ✕</button>
+                </div>
             </div>
             <div class="report-markdown-content" id="report-md-display">
                 <!-- Markdown renders here -->

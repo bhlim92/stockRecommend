@@ -116,3 +116,50 @@ def test_save_screener_results_with_provided_timestamp(temp_db):
     assert aapl_rec.created_at.strftime("%Y-%m-%d %H:%M:%S") == "2026-06-03 10:00:00"
     
     db.close()
+
+def test_daily_report_save_and_search(temp_db):
+    from app.database import save_daily_report, search_daily_reports, get_daily_report_by_date, list_daily_report_dates
+    
+    # 1. Save Report
+    rec_stocks = [
+        {"symbol": "005930.KS", "name": "Samsung Electronics", "action": "BUY", "sector": "Semiconductor"},
+        {"symbol": "AAPL", "name": "Apple Inc.", "action": "HOLD", "sector": "Tech"}
+    ]
+    reb_actions = [
+        {"asset_class": "Equities", "action": "BUY", "amount": 1000}
+    ]
+    
+    success = save_daily_report(
+        report_date="2026-08-23",
+        title="2026-08-23 Daily Stock Recommendation Report",
+        macro_summary="환율 1380원 안정화 및 반도체 섹터 강세",
+        content="# 2026-08-23 Report\n금리 인하 기대로 인하여 삼성전자(005930.KS) 매수 권고.",
+        recommended_stocks=rec_stocks,
+        rebalance_actions=reb_actions,
+        file_path="reports/2026-08-23_report.md",
+        gdrive_link="https://docs.google.com/test_doc"
+    )
+    assert success is True
+    
+    # 2. Search by keyword
+    search_res = search_daily_reports(q="반도체")
+    assert search_res["total"] >= 1
+    assert search_res["results"][0]["report_date"] == "2026-08-23"
+    assert search_res["results"][0]["title"] == "2026-08-23 Daily Stock Recommendation Report"
+    
+    # 3. Search by symbol
+    sym_res = search_daily_reports(symbol="005930.KS")
+    assert sym_res["total"] == 1
+    
+    # 4. Get Detail
+    detail = get_daily_report_by_date("2026-08-23")
+    assert detail is not None
+    assert detail["title"] == "2026-08-23 Daily Stock Recommendation Report"
+    assert len(detail["recommended_stocks"]) == 2
+    assert detail["gdrive_link"] == "https://docs.google.com/test_doc"
+    
+    # 5. List Dates
+    dates = list_daily_report_dates()
+    assert len(dates) >= 1
+    assert dates[0]["report_date"] == "2026-08-23"
+
