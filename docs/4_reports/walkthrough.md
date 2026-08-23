@@ -60,24 +60,28 @@ tests\test_youtube_summarizer.py ......                                  [100%]
 
 ---
 
-## 📌 다음 단계: 일일 투자 리포트 웹 검색 시스템 구현 계획
-
-마이그레이션 및 문서 일원화가 완료됨에 따라, 요청해 주신 **"일일 리포트 웹 검색 및 아카이브 시스템"** 상세 설계를 완료하여 `docs/2_design/`에 저장해 두었습니다.
-
-* **상세 설계서:** [docs/2_design/REPORT_SEARCH_FEATURE_DESIGN.md](file:///c:/Users/samsung/proj/stockRecommend/docs/2_design/REPORT_SEARCH_FEATURE_DESIGN.md)
-* **주요 구성**:
-  1. **SQLite FTS5 (Full-Text Search)** 기반 초고속 한글/영문 전문 검색 DB 구축
-  2. **FastAPI 백엔드 검색 API** (`GET /api/reports/search`)
-  3. **Vercel 프론트엔드 대시보드 내 리포트 아카이브 탭** 및 마크다운 렌더러 모달
-
 ---
 
-## 📚 추가 완료: 문서 체계 단일화 (`docs/` 일원화)
+## 🚀 4. 일일 투자 리포트 스마트 아카이브 & 전문 검색 시스템 구현 완료
 
-기존에 분산되어 있던 `design/`, `manual/`, `docs/` 폴더를 체계적인 **`docs/` 단일 계층 구조**로 100% 통합 정리 완료했습니다:
+일일 투자 추천 리포트를 Vercel 웹 대시보드에서 실시간 검색하고 종목별 히스토리를 조회할 수 있는 시스템을 100% 구축 완료했습니다.
 
-* [**docs/README.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/README.md): 전체 문서 통합 목차 및 사이트맵 허브
-* **`docs/1_architecture/`**: 시스템 전체 아키텍처, 팀 R&R, 기구현 기능 매트릭스
-* **`docs/2_design/`**: UI/UX 디자인 시스템, CANSLIM 스코어링 규칙, 실시간 스크리너 설계, 리포트 웹 검색 설계
-* **`docs/3_manual/`**: VPS/윈도우 스케줄러 배포 매뉴얼, 텔레그램 봇 가이드 (중복 단일화)
-* **`docs/4_reports/`**: QA 감사 보고서, 버그 픽스 보고서, 마이그레이션 결과 보고서
+### 🌟 주요 구현 사항
+1. **데이터베이스 레이어 (`app/database.py`)**:
+   - `DailyReport` ORM 모델 추가 및 `save_daily_report()`, `search_daily_reports()`, `get_daily_report_by_date()`, `list_daily_report_dates()` 구현
+   - MariaDB 및 SQLite 완벽 호환, 키워드/종목/추천방향(BUY/SELL) 다중 필터링
+2. **자동 파이프라인 연동 (`main.py`)**:
+   - 일일 분석 파이프라인 수행 시 리포트 생성 및 Google Docs 업로드 후 DB에 자동 색인(`save_daily_report`)
+3. **과거 리포트 일괄 백필 (`scratch/backfill_reports.py`)**:
+   - 기존에 생성된 71건의 일일 리포트를 파싱하여 DB에 색인 완료
+4. **FastAPI 웹 백엔드 (`app/web_server.py`)**:
+   - `GET /api/reports/search`, `GET /api/reports/detail/{date}`, `GET /api/reports/dates` 엔드포인트 구축
+5. **Vercel 대시보드 UI (`index.html`, `app.js`, `style.css`)**:
+   - 실시간 디바운스 검색창 및 키워드 하이라이팅
+   - `🟢 BUY 포함`, `🔴 SELL 포함` 퀵 필터 칩
+   - 타임라인 리포트 요약 카드 그리드 및 종목 뱃지 표시
+   - 마크다운 렌더러 모달 및 Google Docs 원문 열람 버튼 제공
+6. **품질 검증**:
+   - `tests/test_database.py`, `tests/test_web.py` 단위 테스트 추가
+   - 전체 79개 테스트 100% 통과 (79 passed)
+
