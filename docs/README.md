@@ -19,6 +19,7 @@ mindmap
       실시간 스크리너 연동
       일일 리포트 웹 검색 시스템
       캔들스틱 봉차트 상세 설계
+      칼럼 레이아웃 리밸런싱 설계
     3_manual[3. 운영 및 사용자 매뉴얼]
       배포 및 운영 매뉴얼
       텔레그램 봇 가이드
@@ -52,6 +53,7 @@ mindmap
 * [**REPORT_SEARCH_FEATURE_DESIGN.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/2_design/REPORT_SEARCH_FEATURE_DESIGN.md): SQLite FTS5 기반 일일 투자 리포트 웹 전문 검색 시스템 설계서
 * [**MULTI_USER_AUTH_DESIGN.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/2_design/MULTI_USER_AUTH_DESIGN.md): [신규] 다중 사용자 화이트리스트 및 역할 기반 접근 제어(RBAC) 시스템 설계서
 * [**SCREENER_CANDLESTICK_CHART_DESIGN.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/2_design/SCREENER_CANDLESTICK_CHART_DESIGN.md): [신규] AI 종목 스크리너 캔들스틱(봉차트) 전환 및 OHLCV 복합 렌더링 상세 설계서
+* [**SCREENER_COLUMN_LAYOUT_REDESIGN.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/2_design/SCREENER_COLUMN_LAYOUT_REDESIGN.md): [신규] 스크리너 테이블 칼럼 레이아웃 리밸런싱 및 '핵심 분석 근거' 가독성 개선 설계서
 
 
 ---

@@ -713,9 +713,10 @@ body {
 /* ==============================================================================
    Real-time Portfolio Table
    ============================================================================== */
-.holdings-table-container {
+.holdings-table-container, .table-container {
     width: 100%;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     margin-top: 10px;
 }
 
@@ -724,6 +725,13 @@ body {
     border-collapse: collapse;
     text-align: left;
     font-size: 13px;
+}
+
+/* Screener specific rebalanced table layout */
+.table-container .holdings-table,
+.screener-table {
+    min-width: 1250px;
+    table-layout: fixed;
 }
 
 .holdings-table th {
@@ -735,6 +743,17 @@ body {
     text-transform: uppercase;
     font-size: 11px;
     letter-spacing: 0.5px;
+}
+
+.table-container .holdings-table th,
+.screener-table th {
+    padding: 10px 8px;
+    white-space: nowrap;
+}
+
+.holdings-table th.col-rationale {
+    min-width: 280px;
+    white-space: normal;
 }
 
 .holdings-table th.sortable {
@@ -773,6 +792,22 @@ body {
     padding: 12px 16px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.03);
     color: var(--text-primary);
+}
+
+.table-container .holdings-table td,
+.screener-table td {
+    padding: 10px 8px;
+}
+
+.holdings-table td.col-rationale-cell {
+    min-width: 280px;
+    font-size: 0.84rem;
+    line-height: 1.5;
+    color: #e2e8f0;
+    white-space: normal;
+    word-break: keep-all; /* 단어 단위 줄바꿈으로 한글 가독성 극대화 */
+    overflow-wrap: break-word;
+    padding: 10px 14px;
 }
 
 .holdings-table tbody tr:hover {
