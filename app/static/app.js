@@ -1898,11 +1898,147 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     let detailChartInstance = null;
+    let currentChartData = null;
+    let currentChartMode = 'candle'; // 'candle' | 'line'
+
     const modalChart = document.getElementById('chart-modal');
     const modalChartTitle = document.getElementById('modal-title');
     const modalChartLoading = document.getElementById('modal-loading');
     const chartCanvas = document.getElementById('detailChart');
     const btnCloseChart = document.getElementById('btn-close-chart');
+    const ohlcStrip = document.getElementById('modal-ohlc-strip');
+    const btnChartCandle = document.getElementById('btn-chart-candle');
+    const btnChartLine = document.getElementById('btn-chart-line');
+
+    // Candlestick Custom Chart.js Plugin
+    const appCandlestickPlugin = {
+        id: 'appCandlestickRenderer',
+        afterDatasetsDraw(chart) {
+            const pluginOpts = chart.config.options.plugins?.appCandlestickRenderer;
+            if (!pluginOpts || !pluginOpts.enabled) return;
+            
+            const ohlc = pluginOpts.data;
+            if (!ohlc || !ohlc.opens || !ohlc.opens.length) return;
+            
+            const { ctx, scales: { x, y } } = chart;
+            const opens = ohlc.opens;
+            const highs = ohlc.highs;
+            const lows = ohlc.lows;
+            const closes = ohlc.closes;
+            const count = opens.length;
+            const chartArea = chart.chartArea;
+            const barWidth = Math.max(2, Math.min(8, ((chartArea.right - chartArea.left) / count) * 0.72));
+
+            ctx.save();
+            for (let i = 0; i < count; i++) {
+                const o = opens[i];
+                const h = highs[i];
+                const l = lows[i];
+                const c = closes[i];
+                if (o === null || h === null || l === null || c === null) continue;
+
+                const xPos = x.getPixelForValue(i);
+                const openY = y.getPixelForValue(o);
+                const closeY = y.getPixelForValue(c);
+                const highY = y.getPixelForValue(h);
+                const lowY = y.getPixelForValue(l);
+
+                const isBullish = c >= o;
+                const candleColor = isBullish ? '#ff3366' : '#00d2ff';
+                const wickColor = isBullish ? '#ff557f' : '#33e0ff';
+
+                // 1. Draw High-Low Wick
+                ctx.strokeStyle = wickColor;
+                ctx.lineWidth = 1.2;
+                ctx.beginPath();
+                ctx.moveTo(xPos, highY);
+                ctx.lineTo(xPos, lowY);
+                ctx.stroke();
+
+                // 2. Draw Open-Close Body
+                ctx.fillStyle = candleColor;
+                ctx.strokeStyle = wickColor;
+                ctx.lineWidth = 1;
+                const topY = Math.min(openY, closeY);
+                const bodyHeight = Math.max(2, Math.abs(closeY - openY));
+
+                ctx.fillRect(xPos - barWidth / 2, topY, barWidth, bodyHeight);
+                ctx.strokeRect(xPos - barWidth / 2, topY, barWidth, bodyHeight);
+            }
+            ctx.restore();
+        }
+    };
+
+    if (typeof Chart !== 'undefined') {
+        Chart.register(appCandlestickPlugin);
+    }
+
+    function switchChartMode(mode) {
+        currentChartMode = mode;
+        if (btnChartCandle && btnChartLine) {
+            btnChartCandle.classList.toggle('active', mode === 'candle');
+            btnChartLine.classList.toggle('active', mode === 'line');
+        }
+
+        if (!detailChartInstance || !currentChartData) return;
+
+        detailChartInstance.options.plugins.appCandlestickRenderer.enabled = (mode === 'candle');
+        detailChartInstance.data.datasets[0].hidden = (mode === 'candle');
+        detailChartInstance.update();
+    }
+
+    if (btnChartCandle) btnChartCandle.addEventListener('click', () => switchChartMode('candle'));
+    if (btnChartLine) btnChartLine.addEventListener('click', () => switchChartMode('line'));
+
+    function updateOhlcStrip(idx) {
+        if (!currentChartData || !currentChartData.dates || idx < 0 || idx >= currentChartData.dates.length) return;
+        const d = currentChartData;
+        const date = d.dates[idx];
+        const o = d.opens ? d.opens[idx] : d.prices[idx];
+        const h = d.highs ? d.highs[idx] : d.prices[idx];
+        const l = d.lows ? d.lows[idx] : d.prices[idx];
+        const c = d.closes ? d.closes[idx] : d.prices[idx];
+        const vol = d.volumes ? d.volumes[idx] : 0;
+        const ma5 = d.ma5 ? d.ma5[idx] : null;
+        const ma20 = d.ma20 ? d.ma20[idx] : null;
+        const ma200 = d.ma200 ? d.ma200[idx] : null;
+
+        let prevC = idx > 0 && d.closes ? d.closes[idx - 1] : o;
+        let chgPct = prevC && prevC > 0 ? ((c - prevC) / prevC * 100) : 0;
+        const isUp = c >= prevC;
+
+        const dateEl = document.getElementById('ohlc-date');
+        const openEl = document.getElementById('ohlc-open');
+        const highEl = document.getElementById('ohlc-high');
+        const lowEl = document.getElementById('ohlc-low');
+        const closeEl = document.getElementById('ohlc-close');
+        const chgEl = document.getElementById('ohlc-chg');
+        const volEl = document.getElementById('ohlc-vol');
+        const ma5El = document.getElementById('ohlc-ma5');
+        const ma20El = document.getElementById('ohlc-ma20');
+        const ma200El = document.getElementById('ohlc-ma200');
+
+        if (dateEl) dateEl.innerText = date;
+        if (openEl) openEl.innerText = o !== null ? Number(o).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '-';
+        if (highEl) highEl.innerText = h !== null ? Number(h).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '-';
+        if (lowEl) lowEl.innerText = l !== null ? Number(l).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '-';
+        if (closeEl) {
+            closeEl.innerText = c !== null ? Number(c).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : '-';
+            closeEl.className = 'ohlc-val ' + (isUp ? 'up' : 'down');
+        }
+        if (chgEl) {
+            chgEl.innerText = (chgPct >= 0 ? '+' : '') + chgPct.toFixed(2) + '%';
+            chgEl.className = 'ohlc-val ' + (isUp ? 'up' : 'down');
+        }
+        if (volEl) {
+            if (vol >= 1e6) volEl.innerText = (vol / 1e6).toFixed(1) + 'M';
+            else if (vol >= 1e3) volEl.innerText = (vol / 1e3).toFixed(1) + 'K';
+            else volEl.innerText = Number(vol).toLocaleString();
+        }
+        if (ma5El) ma5El.innerText = ma5 !== null ? Number(ma5).toFixed(2) : '-';
+        if (ma20El) ma20El.innerText = ma20 !== null ? Number(ma20).toFixed(2) : '-';
+        if (ma200El) ma200El.innerText = ma200 !== null ? Number(ma200).toFixed(2) : '-';
+    }
 
     function closeChartModal() {
         if (modalChart) modalChart.classList.remove('active');
@@ -1923,16 +2059,22 @@ document.addEventListener("DOMContentLoaded", () => {
         if (modalChartTitle) modalChartTitle.innerText = `${ticker.toUpperCase()} - 1Year Trend (MA5, MA20, MA200)`;
         if (modalChartLoading) modalChartLoading.style.display = 'block';
         if (chartCanvas) chartCanvas.style.display = 'none';
+        if (ohlcStrip) ohlcStrip.style.display = 'none';
 
         try {
             const resp = await fetch(`/api/screener/history/${ticker}?period=1y`);
             if (!resp.ok) throw new Error('Failed to fetch 1y history');
             const data = await resp.json();
             
+            currentChartData = data;
             if (modalChartLoading) modalChartLoading.style.display = 'none';
             if (chartCanvas) chartCanvas.style.display = 'block';
+            if (ohlcStrip) ohlcStrip.style.display = 'flex';
             
             renderChartJs(data);
+            if (data.dates && data.dates.length) {
+                updateOhlcStrip(data.dates.length - 1);
+            }
         } catch (err) {
             console.error(err);
             if (modalChartLoading) {
@@ -1948,6 +2090,8 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         
         const ctx = chartCanvas.getContext('2d');
+        const hasCandleData = !!(data.opens && data.highs && data.lows && data.closes);
+        const isCandle = currentChartMode === 'candle' && hasCandleData;
         
         detailChartInstance = new Chart(ctx, {
             type: 'line',
@@ -1961,7 +2105,8 @@ document.addEventListener("DOMContentLoaded", () => {
                         borderWidth: 2,
                         pointRadius: 0,
                         tension: 0.1,
-                        yAxisID: 'y'
+                        yAxisID: 'y',
+                        hidden: isCandle
                     },
                     {
                         label: '5일선 (MA5)',
@@ -1993,8 +2138,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     {
                         label: '거래량 (Volume)',
                         data: data.volumes,
-                        backgroundColor: 'rgba(139, 92, 246, 0.3)',
-                        borderColor: 'rgba(139, 92, 246, 0.7)',
+                        backgroundColor: 'rgba(139, 92, 246, 0.25)',
+                        borderColor: 'rgba(139, 92, 246, 0.6)',
                         borderWidth: 1,
                         type: 'bar',
                         yAxisID: 'y1'
@@ -2004,12 +2149,43 @@ document.addEventListener("DOMContentLoaded", () => {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: {
+                    mode: 'index',
+                    intersect: false,
+                },
+                onHover: (event, activeElements) => {
+                    if (activeElements && activeElements.length > 0) {
+                        const dataIndex = activeElements[0].index;
+                        updateOhlcStrip(dataIndex);
+                    }
+                },
                 plugins: {
                     legend: {
                         labels: {
                             color: '#cbd5e1',
                             font: { family: 'Inter' }
                         }
+                    },
+                    tooltip: {
+                        mode: 'index',
+                        intersect: false,
+                        callbacks: {
+                            label: function(context) {
+                                const dsLabel = context.dataset.label || '';
+                                const val = context.raw;
+                                if (val === null || val === undefined) return null;
+                                if (context.dataset.yAxisID === 'y1') {
+                                    if (val >= 1e6) return `${dsLabel}: ${(val / 1e6).toFixed(1)}M`;
+                                    if (val >= 1e3) return `${dsLabel}: ${(val / 1e3).toFixed(1)}K`;
+                                    return `${dsLabel}: ${val.toLocaleString()}`;
+                                }
+                                return `${dsLabel}: ${Number(val).toFixed(2)}`;
+                            }
+                        }
+                    },
+                    appCandlestickRenderer: {
+                        enabled: isCandle,
+                        data: data
                     }
                 },
                 scales: {
@@ -2033,7 +2209,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         position: 'right',
                         grid: { drawOnChartArea: false },
                         min: 0,
-                        suggestedMax: data.volumes && data.volumes.length ? Math.max(...data.volumes) * 3 : undefined,
+                        suggestedMax: data.volumes && data.volumes.length ? Math.max(...data.volumes) * 3.5 : undefined,
                         ticks: {
                             color: '#a78bfa',
                             font: { family: 'Roboto Mono', size: 10 },

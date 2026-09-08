@@ -24,22 +24,20 @@ if [ ! -d "$VENV_DIR" ]; then
         echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Failed to create virtual environment." >> "$LOGS_DIR/scheduler.log"
         exit 1
     fi
+    "$VENV_DIR/bin/pip" install --upgrade pip >> "$LOGS_DIR/scheduler.log" 2>&1
+    "$VENV_DIR/bin/pip" install -r "$PROJECT_DIR/requirements.txt" >> "$LOGS_DIR/scheduler.log" 2>&1
 fi
 
-# Activate virtual environment
-source "$VENV_DIR/bin/activate" >> "$LOGS_DIR/scheduler.log" 2>&1
+VENV_PYTHON="$VENV_DIR/bin/python"
 
-# Install/verify dependencies
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Verifying dependencies..." >> "$LOGS_DIR/scheduler.log"
-pip install --upgrade pip >> "$LOGS_DIR/scheduler.log" 2>&1
-pip install -r "$PROJECT_DIR/requirements.txt" >> "$LOGS_DIR/scheduler.log" 2>&1
-if [ $? -ne 0 ]; then
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: Failed to verify or install dependencies. Proceeding with existing packages." >> "$LOGS_DIR/scheduler.log"
+if [ ! -f "$VENV_PYTHON" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] ERROR: Python binary not found at $VENV_PYTHON" >> "$LOGS_DIR/scheduler.log"
+    exit 1
 fi
 
-# Run the orchestrator script
+# Run the orchestrator script using venv python explicitly
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Executing main.py..." >> "$LOGS_DIR/scheduler.log"
-python3 "$PROJECT_DIR/main.py" >> "$LOGS_DIR/scheduler.log" 2>&1
+"$VENV_PYTHON" "$PROJECT_DIR/main.py" >> "$LOGS_DIR/scheduler.log" 2>&1
 
 PIPELINE_STATUS=$?
 if [ $PIPELINE_STATUS -ne 0 ]; then
@@ -51,5 +49,4 @@ fi
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Pipeline run finished." >> "$LOGS_DIR/scheduler.log"
 echo "--------------------------------------------------" >> "$LOGS_DIR/scheduler.log"
 
-deactivate
 exit $PIPELINE_STATUS

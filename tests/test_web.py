@@ -279,3 +279,51 @@ def test_api_reports_search_and_detail():
         assert res_dates.status_code == 200
         assert len(res_dates.json()) == 1
 
+
+def test_api_screener_history_candlestick_ohlc():
+    import pandas as pd
+    import numpy as np
+    
+    dates = pd.date_range("2026-01-01", periods=10, freq="D")
+    mock_df = pd.DataFrame({
+        "Open": [100.0, 102.0, 101.0, 105.0, 104.0, 108.0, 107.0, 110.0, 109.0, 112.0],
+        "High": [103.0, 104.0, 106.0, 107.0, 109.0, 110.0, 111.0, 113.0, 114.0, 115.0],
+        "Low": [99.0, 101.0, 100.0, 103.0, 102.0, 106.0, 105.0, 108.0, 107.0, 110.0],
+        "Close": [102.0, 103.0, 105.0, 104.0, 108.0, 107.0, 110.0, 111.0, 112.0, 114.0],
+        "Volume": [1000, 1200, 1100, 1500, 1400, 1800, 1700, 2000, 1900, 2200]
+    }, index=dates)
+
+    with patch("app.web_server.AssetDataFetcher") as MockFetcher:
+        instance = MockFetcher.return_value
+        instance.fetch_historical_prices.return_value = mock_df
+
+        response = client.get("/api/screener/history/TEST?period=1y")
+        assert response.status_code == 200
+        data = response.json()
+
+        # Check existing fields
+        assert "dates" in data
+        assert "prices" in data
+        assert "volumes" in data
+        assert "ma5" in data
+        assert "ma20" in data
+        assert "ma200" in data
+
+        # Check new OHLC fields for candlestick chart
+        assert "opens" in data
+        assert "highs" in data
+        assert "lows" in data
+        assert "closes" in data
+
+        assert len(data["opens"]) == 10
+        assert len(data["highs"]) == 10
+        assert len(data["lows"]) == 10
+        assert len(data["closes"]) == 10
+
+        assert data["opens"][0] == 100.0
+        assert data["highs"][0] == 103.0
+        assert data["lows"][0] == 99.0
+        assert data["closes"][0] == 102.0
+        assert data["prices"][0] == 102.0
+
+

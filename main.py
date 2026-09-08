@@ -1,4 +1,5 @@
 import os
+import re
 import argparse
 import uvicorn
 from datetime import datetime
@@ -266,11 +267,29 @@ def main() -> None:
             paras = [p.strip() for p in report_markdown.split("\n\n") if p.strip() and not p.startswith("#")]
             macro_summary = paras[0] if paras else ""
 
+        # Extract recommended stocks for rich dashboard tags
+        recommended_stocks = []
+        table_rows = re.findall(r'\|\s*\*\*?([^\*\|]+)\*\*?\s*\|\s*([^\|]+)\s*\|\s*([^\|]+)\s*\|', report_markdown)
+        for row in table_rows:
+            col1, col2, col3 = row[0].strip(), row[1].strip(), row[2].strip()
+            if "섹터" in col1 or "종목" in col1 or "---" in col1:
+                continue
+            action = "BUY"
+            if "매도" in report_markdown and (col1 in report_markdown.split("매도")[1] or col2 in report_markdown.split("매도")[1]):
+                action = "SELL"
+            recommended_stocks.append({
+                "sector": col1,
+                "symbol": col2,
+                "reason": col3,
+                "action": action
+            })
+
         save_daily_report(
             report_date=timestamp,
             title=title,
             macro_summary=macro_summary,
             content=report_markdown,
+            recommended_stocks=recommended_stocks,
             file_path=local_report_filename,
             gdrive_link=gdoc_link
         )

@@ -395,16 +395,40 @@
 
         <!-- Modal: Ticker Trend Chart -->
         <div class="modal-overlay" id="chart-modal">
-            <div class="modal-container large">
-                <div class="modal-header">
-                    <h3 id="modal-title">Ticker Chart</h3>
-                    <button class="btn-close" id="btn-close-chart">X</button>
+            <div class="modal-container large" style="max-width: 950px; width: 95%;">
+                <div class="modal-header" style="flex-direction: column; align-items: stretch; gap: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3 id="modal-title" style="margin: 0; color: var(--accent-cyan); font-family: 'Inter', 'Orbitron', sans-serif;">Ticker Chart</h3>
+                        <div style="display: flex; align-items: center; gap: 12px;">
+                            <div class="chart-toggle-group">
+                                <button type="button" id="btn-chart-candle" class="chart-toggle-btn active">
+                                    <span>🕯️</span> 봉차트
+                                </button>
+                                <button type="button" id="btn-chart-line" class="chart-toggle-btn">
+                                    <span>📈</span> 라인
+                                </button>
+                            </div>
+                            <button class="btn-close" id="btn-close-chart">X</button>
+                        </div>
+                    </div>
+                    <div id="modal-ohlc-strip" class="chart-ohlc-strip" style="display: none;">
+                        <div class="ohlc-item"><span class="ohlc-label">Date:</span> <span id="ohlc-date" class="ohlc-val">-</span></div>
+                        <div class="ohlc-item"><span class="ohlc-label">Open:</span> <span id="ohlc-open" class="ohlc-val">-</span></div>
+                        <div class="ohlc-item"><span class="ohlc-label">High:</span> <span id="ohlc-high" class="ohlc-val">-</span></div>
+                        <div class="ohlc-item"><span class="ohlc-label">Low:</span> <span id="ohlc-low" class="ohlc-val">-</span></div>
+                        <div class="ohlc-item"><span class="ohlc-label">Close:</span> <span id="ohlc-close" class="ohlc-val">-</span></div>
+                        <div class="ohlc-item"><span class="ohlc-label">Change:</span> <span id="ohlc-chg" class="ohlc-val">-</span></div>
+                        <div class="ohlc-item"><span class="ohlc-label">Volume:</span> <span id="ohlc-vol" class="ohlc-val vol">-</span></div>
+                        <div class="ohlc-item"><span class="ohlc-label">MA5:</span> <span id="ohlc-ma5" class="ohlc-val ma5">-</span></div>
+                        <div class="ohlc-item"><span class="ohlc-label">MA20:</span> <span id="ohlc-ma20" class="ohlc-val ma20">-</span></div>
+                        <div class="ohlc-item"><span class="ohlc-label">MA200:</span> <span id="ohlc-ma200" class="ohlc-val ma200">-</span></div>
+                    </div>
                 </div>
-                <div class="modal-body" style="padding: 25px;">
+                <div class="modal-body" style="padding: 20px;">
                     <div id="modal-loading" style="display: none; text-align: center; padding: 40px; color: var(--text-secondary); width: 100%;">
                         야후 파이낸스 실시간 데이터 수집 중... <span class="pulse-ring" style="display: inline-block; margin-left: 10px;"></span>
                     </div>
-                    <canvas id="detailChart" width="800" height="400" style="width: 100%; max-height: 50vh; display: block;"></canvas>
+                    <canvas id="detailChart" width="850" height="420" style="width: 100%; max-height: 52vh; display: block;"></canvas>
                 </div>
             </div>
         </div>

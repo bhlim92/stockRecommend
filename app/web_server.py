@@ -33,9 +33,10 @@ from app.database import get_top_screener_results
 
 logger = setup_logger("web_server", AppConfig.LOG_FILE_PATH, AppConfig.LOG_LEVEL)
 
-# Session configurations
+# Session & Authorization configurations
 AUTH_SECRET_KEY = os.getenv("AUTH_SECRET_KEY", "antigravity-quant-secret-2026-key")
-AUTHORIZED_EMAIL = "bumhyun.lim@gmail.com"
+raw_emails = os.getenv("AUTHORIZED_EMAILS", "bumhyun.lim@gmail.com,kapi123@gmail.com")
+AUTHORIZED_EMAILS = [e.strip().lower() for e in raw_emails.split(",") if e.strip()]
 TESTING = os.getenv("TESTING", "false").lower() == "true"
 
 def generate_session_token(email: str) -> str:
@@ -174,11 +175,11 @@ async def auth_middleware(request: Request, call_next):
     auth_token = request.cookies.get("auth_token")
     email = verify_session_token(auth_token) if auth_token else None
     
-    if email != AUTHORIZED_EMAIL:
+    if not email or email.lower() not in AUTHORIZED_EMAILS:
         if path.startswith("/api/"):
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                content={"detail": f"Access denied. Access is restricted to {AUTHORIZED_EMAIL}."}
+                content={"detail": "Access denied. Access is restricted to authorized users."}
             )
         else:
             from fastapi.responses import RedirectResponse
@@ -669,15 +670,29 @@ def get_screener_history(ticker: str, period: str = "1mo") -> JSONResponse:
             df["ma200"] = df["Close"].rolling(window=200).mean()
             
             dates = df.index.strftime('%Y-%m-%d').tolist()
-            prices = [None if pd.isna(x) else x for x in df["Close"]]
-            volumes = [None if pd.isna(x) else x for x in df["Volume"]]
-            ma5 = [None if pd.isna(x) else x for x in df["ma5"]]
-            ma20 = [None if pd.isna(x) else x for x in df["ma20"]]
-            ma200 = [None if pd.isna(x) else x for x in df["ma200"]]
+            prices = [None if pd.isna(x) else round(float(x), 2) for x in df["Close"]]
+            
+            open_col = df["Open"] if "Open" in df.columns else df["Close"]
+            high_col = df["High"] if "High" in df.columns else df["Close"]
+            low_col = df["Low"] if "Low" in df.columns else df["Close"]
+            
+            opens = [None if pd.isna(x) else round(float(x), 2) for x in open_col]
+            highs = [None if pd.isna(x) else round(float(x), 2) for x in high_col]
+            lows = [None if pd.isna(x) else round(float(x), 2) for x in low_col]
+            closes = prices
+            
+            volumes = [None if pd.isna(x) else int(x) for x in df["Volume"]]
+            ma5 = [None if pd.isna(x) else round(float(x), 2) for x in df["ma5"]]
+            ma20 = [None if pd.isna(x) else round(float(x), 2) for x in df["ma20"]]
+            ma200 = [None if pd.isna(x) else round(float(x), 2) for x in df["ma200"]]
             
             return JSONResponse(content={
                 "dates": dates,
                 "prices": prices,
+                "opens": opens,
+                "highs": highs,
+                "lows": lows,
+                "closes": closes,
                 "volumes": volumes,
                 "ma5": ma5,
                 "ma20": ma20,
@@ -1378,10 +1393,7 @@ def auth_login(payload: LoginRequest, request: Request) -> JSONResponse:
         token_data = resp.json()
         email = token_data.get("email")
         
-        if not email:
-            raise HTTPException(status_code=400, detail="Email not present in Google token.")
-            
-        if email != AUTHORIZED_EMAIL:
+        if not email or email.lower() not in AUTHORIZED_EMAILS:
             raise HTTPException(
                 status_code=403, 
                 detail=f"Access denied. Email {email} is not authorized."

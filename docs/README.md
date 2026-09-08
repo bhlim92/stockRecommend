@@ -18,12 +18,14 @@ mindmap
       CANSLIM 퀀트 규칙
       실시간 스크리너 연동
       일일 리포트 웹 검색 시스템
+      캔들스틱 봉차트 상세 설계
     3_manual[3. 운영 및 사용자 매뉴얼]
       배포 및 운영 매뉴얼
       텔레그램 봇 가이드
     4_reports[4. 검증 및 변경 이력]
       스크리너 QA 감사 보고서
       v3.3 버그 픽스 보고서
+      일일 리포트 장애 복구 보고서
       전문가 검토 보고서
       마이그레이션 결과 보고서
 ```
@@ -47,7 +49,10 @@ mindmap
 * [**screener_scoring_rules.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/2_design/screener_scoring_rules.md): CANSLIM 성장성, 재무 지표 및 기술적 보조지표(RSI/MACD) 퀀트 점수 산출 로직
 * [**screener_scoring_rules.pptx**](file:///c:/Users/samsung/proj/stockRecommend/docs/2_design/screener_scoring_rules.pptx): 퀀트 스코어링 규칙 시각화 슬라이드
 * [**screener_realtime_design.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/2_design/screener_realtime_design.md): 2.0초 폴링, 실시간 Top 15 리더보드 및 CORS/SameSite 연동 설계서
-* [**REPORT_SEARCH_FEATURE_DESIGN.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/2_design/REPORT_SEARCH_FEATURE_DESIGN.md): [신규] SQLite FTS5 기반 일일 투자 리포트 웹 전문 검색 시스템 설계서
+* [**REPORT_SEARCH_FEATURE_DESIGN.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/2_design/REPORT_SEARCH_FEATURE_DESIGN.md): SQLite FTS5 기반 일일 투자 리포트 웹 전문 검색 시스템 설계서
+* [**MULTI_USER_AUTH_DESIGN.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/2_design/MULTI_USER_AUTH_DESIGN.md): [신규] 다중 사용자 화이트리스트 및 역할 기반 접근 제어(RBAC) 시스템 설계서
+* [**SCREENER_CANDLESTICK_CHART_DESIGN.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/2_design/SCREENER_CANDLESTICK_CHART_DESIGN.md): [신규] AI 종목 스크리너 캔들스틱(봉차트) 전환 및 OHLCV 복합 렌더링 상세 설계서
+
 
 ---
 
@@ -65,6 +70,7 @@ QA 테스트 감사, 버그 수정 내역 및 시스템 변경 이력 보고서�
 
 * [**screener_integration_qa_report.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/4_reports/screener_integration_qa_report.md): 실시간 스크리너 통합 QA 감사 및 버그 분석 보고서
 * [**v3.3_bug_fix_report.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/4_reports/v3.3_bug_fix_report.md): v3.3 릴리즈 당시의 버그 픽스 내역
+* [**daily_report_generation_recovery_report.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/4_reports/daily_report_generation_recovery_report.md): [신규] 일일 투자 보고서 생성 장애 원인 분석 및 복구 보고서
 * [**EXPERT_PLAN_REVIEW.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/4_reports/EXPERT_PLAN_REVIEW.md): 전문가 패널(개발자, QA, 인프라, 테크니컬 라이터) 종합 검토 보고서
 * [**implementation_plan.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/4_reports/implementation_plan.md): 표준 명칭 마이그레이션 구현 계획서
 * [**walkthrough.md**](file:///c:/Users/samsung/proj/stockRecommend/docs/4_reports/walkthrough.md): 마이그레이션 실행 및 77개 테스트 100% 통과 결과 보고서
