@@ -76,6 +76,8 @@ if [ $PIPELINE_STATUS -ne 0 ]; then
         notify_failure "main.py 1시간 초과(timeout)로 강제 종료"
     elif [ $PIPELINE_STATUS -eq 2 ]; then
         notify_failure "리포트는 생성됐으나 DB 색인 실패 → 웹 아카이브에 표시되지 않음"
+    elif [ $PIPELINE_STATUS -eq 3 ]; then
+        notify_failure "Gemini AI 분석 실패 → 데이터 전용 대체 리포트로 게시됨 (API 한도/키 확인 필요)"
     else
         notify_failure "main.py 비정상 종료 (exit code $PIPELINE_STATUS)"
     fi

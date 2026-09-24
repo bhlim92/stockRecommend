@@ -201,11 +201,19 @@ def main() -> None:
     logger.info("Compiling daily investment report via Recommendation Engine...")
     recommender = RecommendationEngine(AppConfig.GEMINI_API_KEY, model_name=selected_model)
     
-    report_markdown = recommender.generate_recommendation_report(
-        market=market_data,
-        news=unique_news,
-        youtube=youtube_summaries
-    )
+    ai_failure_reason = None
+    try:
+        report_markdown = recommender.generate_recommendation_report(
+            market=market_data,
+            news=unique_news,
+            youtube=youtube_summaries
+        )
+    except Exception as e:
+        # Keep the archive populated with a data-only report; exit code 3 still triggers an alert
+        ai_failure_reason = str(e)
+        logger.error(f"AI report generation failed, writing data-only fallback report: {ai_failure_reason}")
+        from app.fallback_report import build_fallback_report
+        report_markdown = build_fallback_report(market_data, unique_news, ai_failure_reason)
 
     # 8. Step 7: Archive and Save locally
     os.makedirs("reports", exist_ok=True)
@@ -303,6 +311,10 @@ def main() -> None:
         logger.error(f"Daily report for {timestamp} was NOT indexed into the database.")
         raise SystemExit(2)
     logger.info(f"Successfully indexed daily report for {timestamp} into database.")
+
+    if ai_failure_reason:
+        logger.error("Pipeline finished with a data-only fallback report because AI generation failed.")
+        raise SystemExit(3)
 
 if __name__ == "__main__":
     main()
