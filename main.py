@@ -284,7 +284,7 @@ def main() -> None:
                 "action": action
             })
 
-        save_daily_report(
+        indexed = save_daily_report(
             report_date=timestamp,
             title=title,
             macro_summary=macro_summary,
@@ -293,9 +293,16 @@ def main() -> None:
             file_path=local_report_filename,
             gdrive_link=gdoc_link
         )
-        logger.info(f"Successfully indexed daily report for {timestamp} into database.")
     except Exception as e:
-        logger.warning(f"Could not index daily report into database: {str(e)}")
+        logger.error(f"Could not index daily report into database: {str(e)}")
+        indexed = False
+
+    # The web archive reads only from the database, so a missed index means the report is invisible.
+    # Exit non-zero so run_pipeline.sh raises an alert instead of logging a silent success.
+    if not indexed:
+        logger.error(f"Daily report for {timestamp} was NOT indexed into the database.")
+        raise SystemExit(2)
+    logger.info(f"Successfully indexed daily report for {timestamp} into database.")
 
 if __name__ == "__main__":
     main()

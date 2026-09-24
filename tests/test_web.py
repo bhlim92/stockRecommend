@@ -280,6 +280,27 @@ def test_api_reports_search_and_detail():
         assert len(res_dates.json()) == 1
 
 
+def test_api_reports_health_watchdog():
+    from datetime import datetime, timedelta, timezone
+    today_kst = (datetime.now(timezone.utc) + timedelta(hours=9)).date()
+
+    fresh = [{"report_date": str(today_kst), "title": "t", "gdrive_link": None}]
+    with patch("app.database.list_daily_report_dates", return_value=fresh):
+        res = client.get("/api/health/reports")
+        assert res.status_code == 200
+        assert res.json()["status"] == "ok"
+
+    stale = [{"report_date": str(today_kst - timedelta(days=5)), "title": "t", "gdrive_link": None}]
+    with patch("app.database.list_daily_report_dates", return_value=stale):
+        res = client.get("/api/health/reports")
+        assert res.status_code == 503
+        assert res.json()["status"] == "stale"
+        assert res.json()["age_days"] == 5
+
+    with patch("app.database.list_daily_report_dates", return_value=[]):
+        assert client.get("/api/health/reports").status_code == 503
+
+
 def test_api_screener_history_candlestick_ohlc():
     import pandas as pd
     import numpy as np

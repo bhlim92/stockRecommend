@@ -120,6 +120,16 @@ def init_db():
         return False
 
 
+def _close_session(db) -> None:
+    """Rolls back and closes a session left open by an exception, returning its connection to the pool."""
+    if db is None:
+        return
+    try:
+        db.rollback()
+    finally:
+        db.close()
+
+
 def _migrate_add_missing_columns(eng):
     """screener_results 테이블에 신규 컬럼이 없으면 ALTER TABLE로 추가합니다."""
     # 추가해야 할 컬럼: (name, ddl_fragment)
@@ -169,6 +179,7 @@ def save_screener_results(market: str, results: List[Dict[str, Any]]) -> bool:
         if not init_db():
             return False
             
+    db = None
     try:
         db = SessionLocal()
         db_records = []
@@ -233,6 +244,7 @@ def save_screener_results(market: str, results: List[Dict[str, Any]]) -> bool:
         db.close()
         return False
     except Exception as e:
+        _close_session(db)
         logger.error(f"Error during saving screener results to database: {str(e)}")
         return False
 
@@ -242,6 +254,7 @@ def get_top_screener_results(limit: int = 10, market: str = None) -> List[Dict[s
     if SessionLocal is None:
         if not init_db():
             return []
+    db = None
     try:
         db = SessionLocal()
         # Find the latest scan time
@@ -287,6 +300,7 @@ def get_top_screener_results(limit: int = 10, market: str = None) -> List[Dict[s
         db.close()
         return dict_results
     except Exception as e:
+        _close_session(db)
         logger.error(f"Error retrieving top screener results: {str(e)}")
         return []
 
@@ -296,6 +310,7 @@ def get_latest_score_by_symbol(symbol: str) -> Optional[Dict[str, Any]]:
     if SessionLocal is None:
         if not init_db():
             return None
+    db = None
     try:
         db = SessionLocal()
         symbol_upper = symbol.upper()
@@ -336,6 +351,7 @@ def get_latest_score_by_symbol(symbol: str) -> Optional[Dict[str, Any]]:
         db.close()
         return res
     except Exception as e:
+        _close_session(db)
         logger.error(f"Error retrieving score for {symbol}: {str(e)}")
         return None
 
@@ -362,6 +378,7 @@ def save_daily_report(
             return False
             
     import json
+    db = None
     try:
         db = SessionLocal()
         existing = db.query(DailyReport).filter(DailyReport.report_date == report_date).first()
@@ -398,6 +415,7 @@ def save_daily_report(
         db.close()
         return True
     except Exception as e:
+        _close_session(db)
         logger.error(f"Failed to save daily report for date {report_date}: {str(e)}")
         return False
 
@@ -420,6 +438,7 @@ def search_daily_reports(
             return {"total": 0, "results": []}
             
     import json
+    db = None
     try:
         db = SessionLocal()
         query = db.query(DailyReport)
@@ -479,6 +498,7 @@ def search_daily_reports(
         db.close()
         return {"total": total, "results": results}
     except Exception as e:
+        _close_session(db)
         logger.error(f"Error searching daily reports: {str(e)}")
         return {"total": 0, "results": []}
 
@@ -491,6 +511,7 @@ def get_daily_report_by_date(report_date: str) -> Optional[Dict[str, Any]]:
             return None
             
     import json
+    db = None
     try:
         db = SessionLocal()
         r = db.query(DailyReport).filter(DailyReport.report_date == report_date).first()
@@ -513,6 +534,7 @@ def get_daily_report_by_date(report_date: str) -> Optional[Dict[str, Any]]:
         db.close()
         return res
     except Exception as e:
+        _close_session(db)
         logger.error(f"Error getting daily report for date {report_date}: {str(e)}")
         return None
 
@@ -524,6 +546,7 @@ def list_daily_report_dates(limit: int = 30) -> List[Dict[str, Any]]:
         if not init_db():
             return []
             
+    db = None
     try:
         db = SessionLocal()
         records = db.query(DailyReport.report_date, DailyReport.title, DailyReport.gdrive_link, DailyReport.created_at)\
@@ -540,6 +563,7 @@ def list_daily_report_dates(limit: int = 30) -> List[Dict[str, Any]]:
         db.close()
         return res
     except Exception as e:
+        _close_session(db)
         logger.error(f"Error listing daily report dates: {str(e)}")
         return []
 

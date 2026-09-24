@@ -1,0 +1,2 @@
+# Shell scripts run on the Linux server; CRLF breaks the shebang and silently kills cron
+*.sh text eol=lf

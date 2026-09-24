@@ -39,3 +39,6 @@ chrome_profile/
 temp_chrome_profile/
 *.log
 
+
+# Ad-hoc ops scripts (contain server credentials)
+scratch/

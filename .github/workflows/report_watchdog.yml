@@ -1,0 +1,51 @@
+name: Daily Report Watchdog
+
+# Independent of the cafe24 server: detects a dead cron, broken venv, crashed server,
+# or DB indexing failure by checking that the web archive actually has a fresh report.
+on:
+  schedule:
+    # 09:30 KST (00:30 UTC) daily
+    - cron: '30 0 * * *'
+  workflow_dispatch:
+
+jobs:
+  check-report-freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check latest archived report
+        id: check
+        run: |
+          set +e
+          BODY=$(curl -s -m 30 -w '\n%{http_code}' "https://stockrecommend.vercel.app/api/health/reports?max_age_days=1")
+          CODE=$(echo "$BODY" | tail -n1)
+          JSON=$(echo "$BODY" | sed '$d')
+          echo "HTTP $CODE"
+          echo "$JSON"
+          {
+            echo "code=$CODE"
+            echo "json<<EOF"
+            echo "$JSON"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          [ "$CODE" = "200" ]
+
+      - name: Send Telegram alert
+        if: failure()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CODE: ${{ steps.check.outputs.code }}
+          JSON: ${{ steps.check.outputs.json }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "Telegram secrets not set; relying on GitHub failure email."
+            exit 0
+          fi
+          TEXT="⚠️ [stockRecommend 감시] 일일 리포트가 웹 아카이브에 갱신되지 않았습니다.
+          HTTP: ${CODE:-응답 없음}
+          응답: ${JSON:-없음}
+          서버 점검: crontab -l / tail logs/scheduler.log
+          실행 기록: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          curl -s -m 20 -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${TEXT}" > /dev/null

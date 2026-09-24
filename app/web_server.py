@@ -165,7 +165,8 @@ async def auth_middleware(request: Request, call_next):
         "/api/auth/config", 
         "/api/auth/login", 
         "/api/version",
-        "/style.css", 
+        "/api/health/reports",
+        "/style.css",
         "/app.js", 
         "/favicon.ico"
     ]:
@@ -1045,6 +1046,31 @@ def api_list_report_dates(limit: int = 30):
     from app.database import list_daily_report_dates
     dates = list_daily_report_dates(limit=limit)
     return JSONResponse(content=dates)
+
+
+@app.get("/api/health/reports")
+def api_reports_health(max_age_days: int = 1) -> JSONResponse:
+    """Public freshness check for the external watchdog. Exposes only the latest report date.
+
+    Returns 503 when the newest indexed report is older than max_age_days (KST), or the DB is unreachable.
+    """
+    from datetime import date, timedelta, timezone
+    from app.database import list_daily_report_dates
+    today_kst = (datetime.now(timezone.utc) + timedelta(hours=9)).date()
+    latest = list_daily_report_dates(limit=1)
+    if not latest:
+        return JSONResponse(status_code=503, content={"status": "error", "detail": "no reports or database unreachable", "today_kst": str(today_kst)})
+
+    latest_date = latest[0]["report_date"]
+    try:
+        age_days = (today_kst - date.fromisoformat(latest_date)).days
+    except ValueError:
+        age_days = None
+    ok = age_days is not None and age_days <= max_age_days
+    return JSONResponse(
+        status_code=200 if ok else 503,
+        content={"status": "ok" if ok else "stale", "latest_report_date": latest_date, "age_days": age_days, "today_kst": str(today_kst)}
+    )
 
 
 @app.get("/api/reports/{filename}")
