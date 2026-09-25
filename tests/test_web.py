@@ -280,6 +280,27 @@ def test_api_reports_search_and_detail():
         assert len(res_dates.json()) == 1
 
 
+def test_pipeline_upload_indexes_report_into_archive(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # upload writes reports/<today>_report.md relative to cwd
+    with patch("app.report_indexer.save_daily_report", return_value=True) as mock_save:
+        res = client.post("/api/pipeline/upload", json={"report_markdown": "# Title\n\n### 1. 요약\nSummary\n"})
+        assert res.status_code == 200
+        assert any("색인 완료" in line for line in res.json()["logs"])
+        kwargs = mock_save.call_args.kwargs
+        assert kwargs["title"] == "Title"
+        assert kwargs["macro_summary"] == "Summary"
+
+
+def test_recommending_failure_returns_korean_hint():
+    with patch("app.web_server.RecommendationEngine") as mock_engine:
+        mock_engine.return_value.generate_recommendation_report.side_effect = Exception("429 Your project has exceeded its monthly spending cap.")
+        res = client.post("/api/pipeline/recommending", json={
+            "api_key": "k", "model": "gemini-3.5-flash", "market_data": {}, "news": [], "youtube_summaries": []
+        })
+        assert res.status_code == 500
+        assert any(line.startswith("[HINT]") and "지출 한도" in line for line in res.json()["logs"])
+
+
 def test_api_reports_health_watchdog():
     from datetime import datetime, timedelta, timezone
     today_kst = (datetime.now(timezone.utc) + timedelta(hours=9)).date()

@@ -574,7 +574,12 @@ document.addEventListener("DOMContentLoaded", () => {
                     youtube_summaries: youtubeSummaries
                 })
             });
-            if (!res.ok) throw new Error(`4단계 보고서 생성 실패 (HTTP ${res.status})`);
+            if (!res.ok) {
+                // Surface the server's actual cause (e.g. spending cap, retired model) instead of a bare HTTP code
+                const errData = await res.json().catch(() => ({}));
+                appendStepLogs(errData.logs);
+                throw new Error(`4단계 보고서 생성 실패 (HTTP ${res.status})${errData.error ? ": " + errData.error.slice(0, 160) : ""}`);
+            }
             data = await res.json();
             reportMarkdown = data.report_markdown;
             appendStepLogs(data.logs);

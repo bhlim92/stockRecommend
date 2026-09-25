@@ -345,7 +345,21 @@ def pipeline_recommending(req: RecommendingRequest) -> JSONResponse:
         return JSONResponse(content={"report_markdown": report_markdown, "logs": logs})
     except Exception as e:
         logger.error(f"Recommending step failed: {str(e)}")
-        return JSONResponse(status_code=500, content={"error": str(e), "logs": logs + [f"[ERROR] 4단계 실패: {str(e)}"]})
+        hint = gemini_error_hint(str(e))
+        return JSONResponse(status_code=500, content={"error": str(e), "logs": logs + [f"[ERROR] 4단계 실패: {str(e)}"] + ([f"[HINT] {hint}"] if hint else [])})
+
+
+def gemini_error_hint(message: str) -> str:
+    """Translates common Gemini API failures into an actionable Korean hint for the dashboard log."""
+    if "spending cap" in message:
+        return "Gemini 월 지출 한도 초과입니다. ai.studio/spend 에서 한도를 올리거나, 다른(무료) 프로젝트의 API 키를 설정에 입력하세요."
+    if "no longer available" in message or "404" in message:
+        return "선택한 AI 모델이 종료되었습니다. 설정에서 다른 모델(예: Gemini 3.5 Flash)을 선택하세요."
+    if "API_KEY_INVALID" in message or "API key" in message:
+        return "Gemini API 키가 만료되었거나 잘못되었습니다. 설정에서 키를 다시 입력하세요."
+    if "429" in message or "quota" in message.lower():
+        return "Gemini 사용량 한도(분당/일일)에 걸렸습니다. 잠시 후 다시 시도하세요."
+    return ""
 
 @app.post("/api/pipeline/upload")
 def pipeline_upload(req: UploadRequest) -> JSONResponse:
@@ -391,7 +405,14 @@ def pipeline_upload(req: UploadRequest) -> JSONResponse:
             logs.append(f"[WARNING] 구글 드라이브 업로드 실패: {str(e)}")
     else:
         logs.append("[INFO] 구글 드라이브 크레덴셜 설정이 확인되지 않아 업로드를 생략합니다.")
-        
+
+    # 3. Index into DB so the report appears in the web archive & search
+    from app.report_indexer import index_report
+    if index_report(req.report_markdown, timestamp, file_path=local_report_filename, gdrive_link=gdoc_link or None):
+        logs.append(f"[SUCCESS] 리포트 아카이브(DB) 색인 완료: {timestamp}")
+    else:
+        logs.append("[WARNING] 리포트 아카이브(DB) 색인 실패 — 스마트 아카이브에 표시되지 않습니다.")
+
     logs.append("[SYSTEM] 5단계: 아카이빙 및 업로드 완료.")
     return JSONResponse(content={"gdoc_link": gdoc_link, "logs": logs})
 
@@ -530,6 +551,10 @@ def run_pipeline_worker() -> None:
             local_report_filename = f"reports/{timestamp}_report.md"
             with open(local_report_filename, "w", encoding="utf-8") as f:
                 f.write(report_markdown)
+
+            from app.report_indexer import index_report
+            if not index_report(report_markdown, timestamp, file_path=local_report_filename):
+                logger.warning(f"On-demand report for {timestamp} was not indexed into the database.")
 
             # Step 9: Upload to Google Drive (if credentials exist)
             if AppConfig.GOOGLE_APPLICATION_CREDENTIALS and os.path.exists(AppConfig.GOOGLE_APPLICATION_CREDENTIALS):
