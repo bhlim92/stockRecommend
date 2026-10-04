@@ -29,7 +29,8 @@ class RecommendationEngine:
         news: List[Dict[str, Any]],
         youtube: List[Dict[str, Any]],
         canslim: Optional[List[Dict[str, Any]]] = None,
-        portfolio: Optional[Dict[str, Any]] = None
+        portfolio: Optional[Dict[str, Any]] = None,
+        extra_instructions: Optional[str] = None
     ) -> str:
         """
         Constructs system prompts containing market intelligence data and queries Gemini
@@ -201,6 +202,10 @@ Below is the collected intelligence:
 
 Write the report in a clear, authoritative, professional tone, suitable for high-net-worth investors or fund managers.
 """
+
+        if extra_instructions:
+            # Placed last so it overrides the generic guidelines above (e.g. fixed report date for backfills)
+            prompt += f"\n---\n\n### 추가 지침 (최우선 적용)\n{extra_instructions}\n"
 
         import time
         logger.info("Sleeping 13 seconds to respect Gemini API rate limits...")

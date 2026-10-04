@@ -30,6 +30,18 @@ def _fmt_pct(value: Optional[float]) -> str:
     return "-" if value is None else f"{value:+.2f}%"
 
 
+def price_table_lines(market: Dict[str, Any]) -> List[str]:
+    """Markdown table of last close and day-over-day change for watchlist, macro assets and FX."""
+    lines = ["| 티커 | 종가 | 전일 대비 |", "| :--- | ---: | ---: |"]
+    for ticker, df in (market.get("prices") or {}).items():
+        last, chg = _last_and_change(df, "Close")
+        lines.append(f"| {ticker} | {_fmt(last)} | {_fmt_pct(chg)} |")
+    for key, df in (market.get("exchange_rates") or {}).items():
+        last, chg = _last_and_change(df, "Close")
+        lines.append(f"| {key} | {_fmt(last)} | {_fmt_pct(chg)} |")
+    return lines
+
+
 def build_fallback_report(
     market: Dict[str, Any],
     news: List[Dict[str, Any]],
@@ -50,16 +62,8 @@ def build_fallback_report(
         "",
         "### 2. 주요 종목 및 자산 가격",
         "",
-        "| 티커 | 종가 | 전일 대비 |",
-        "| :--- | ---: | ---: |",
     ]
-    for ticker, df in (market.get("prices") or {}).items():
-        last, chg = _last_and_change(df, "Close")
-        lines.append(f"| {ticker} | {_fmt(last)} | {_fmt_pct(chg)} |")
-
-    for key, df in (market.get("exchange_rates") or {}).items():
-        last, chg = _last_and_change(df, "Close")
-        lines.append(f"| {key} | {_fmt(last)} | {_fmt_pct(chg)} |")
+    lines += price_table_lines(market)
 
     yields = market.get("yields") or {}
     if yields:
